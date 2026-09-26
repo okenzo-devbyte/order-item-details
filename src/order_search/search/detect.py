@@ -40,8 +40,12 @@ def detect(query: str, connection: sqlite3.Connection) -> Detection:
     product query leaves product_ids empty; the engine resolves those via FTS.
     An exact `=` cannot be used for the product side because stored product
     names are always longer than a customer name that prefixes them.
+
+    The query is coerced with str() rather than assumed to be text, so a
+    numeric query from a JSON payload degrades to a product search instead of
+    raising AttributeError on .strip().
     """
-    text = (query or "").strip()
+    text = str(query or "").strip()
     normalized = norm(text)
 
     if not normalized:

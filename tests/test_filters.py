@@ -91,6 +91,23 @@ class TestDateFilter:
         )
         assert list(params) == ["2026-11-30", "2026-01-05"]
 
+    def test_non_iso_date_raises_value_error(self):
+        import pytest
+
+        # The source format is deliberately NOT accepted: normalizing it would
+        # require importing the ingest layer, which this module must not
+        # depend on. Callers convert before constructing Filters.
+        for bad in ["26-Sep-2026", "2026/09/26", "2026-9-1", "yesterday", ""]:
+            with pytest.raises(ValueError):
+                Filters(date_from=bad)
+            with pytest.raises(ValueError):
+                Filters(date_to=bad)
+
+    def test_iso_dates_are_accepted(self):
+        filters = Filters(date_from="2026-01-01", date_to="2026-12-31")
+        assert filters.date_from == "2026-01-01"
+        assert filters.date_to == "2026-12-31"
+
 
 class TestFiltersValueObject:
     def test_defaults_are_empty(self):

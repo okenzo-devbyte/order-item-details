@@ -49,7 +49,18 @@ def _as_filters(filters: Any) -> Filters:
         return Filters()
     if isinstance(filters, Filters):
         return filters
-    return Filters(**{k: v for k, v in dict(filters).items() if v is not None})
+    allowed = set(Filters.__dataclass_fields__)
+    return Filters(
+        **{k: v for k, v in dict(filters).items() if k in allowed and v is not None}
+    )
+
+
+def _coerce_limit(value: Any, default: int, maximum: int) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(1, min(number, maximum))
 
 
 def _clean_list(values: Any) -> list[str]:
@@ -93,7 +104,12 @@ class SearchEngine:
         limit: int = DEFAULT_LIMIT,
         cursor: str | None = None,
     ) -> dict[str, Any]:
-        limit = max(1, min(int(limit or DEFAULT_LIMIT), MAX_LIMIT))
+        if mode not in ("auto", "customer", "product"):
+            raise ValueError(
+                "mode must be 'auto', 'customer' or 'product',"
+                f" got {mode!r}"
+            )
+        limit = _coerce_limit(limit, DEFAULT_LIMIT, MAX_LIMIT)
         active = _as_filters(filters)
         offset = _decode_cursor(cursor)
         detection = detect(query, self.connection)
@@ -147,7 +163,7 @@ class SearchEngine:
         text = (query or "").strip()
         if not text:
             return []
-        limit = max(1, min(int(limit), 20))
+        limit = _coerce_limit(limit, 8, 20)
         normalized = detect(text, self.connection).normalized_query
         if not normalized:
             return []

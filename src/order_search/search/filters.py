@@ -1,7 +1,16 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
+
+# Dates are stored as ISO YYYY-MM-DD text and compared lexicographically, which
+# is chronological for this format. Anything else silently matches nothing, so
+# it is rejected loudly here rather than producing an empty result that looks
+# like "no purchases". The source format '26-Sep-2026' is deliberately NOT
+# accepted: normalizing it would require importing the ingest layer, which this
+# module must not depend on. Callers convert before constructing Filters.
+_ISO_DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 _SCALAR_GROUPS = (
     ("store_code", "o.store_code"),
@@ -35,6 +44,12 @@ class Filters:
     def __post_init__(self) -> None:
         for name, _column in _SCALAR_GROUPS + _PRODUCT_GROUPS:
             object.__setattr__(self, name, _clean(getattr(self, name)))
+        for name in ("date_from", "date_to"):
+            value = getattr(self, name)
+            if value is not None and not _ISO_DATE_RE.fullmatch(value):
+                raise ValueError(
+                    f"{name} must be ISO YYYY-MM-DD, got {value!r}"
+                )
 
 
 def _clean(values: Any) -> tuple:

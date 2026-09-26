@@ -62,8 +62,10 @@ def test_date_filter_is_an_overlap_not_a_containment(tmp_path):
         "SELECT date_from, date_to FROM orders"
         " WHERE date_from IS NOT NULL AND date_from <> date_to LIMIT 1"
     ).fetchone()
-    if row is None:
-        return  # fixture randomness produced only single-day ranges
+    # The fixture generates multi-day ranges by construction (seed 7, day
+    # spans drawn from [0, 0, 1, 2, 5] over 1000 rows), so a missing row here
+    # means the generator broke, not that the test is vacuous.
+    assert row is not None
     total = engine.search("น้ำ")["products"][0]["order_count"]
     overlap = engine.search(
         "น้ำ",

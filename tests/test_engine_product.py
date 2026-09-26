@@ -136,6 +136,81 @@ class TestResponseShape:
         result = engine.search("น้ำ", limit=5000)
         assert len(result["products"]) <= 100
 
+    def test_limit_clamp_is_real_not_vacuous(self):
+        # The test above passes with 4 products even if clamping is broken, so
+        # this builds 150 products and proves the cap actually engages.
+        import sqlite3
+
+        from order_search.ingest.build import apply_schema
+
+        connection = sqlite3.connect(":memory:", isolation_level=None)
+        connection.row_factory = sqlite3.Row
+        apply_schema(connection)
+        connection.execute(
+            "INSERT INTO customers (id, name, name_norm, name_fold_light,"
+            " name_fold_heavy) VALUES (1, 'c', 'c', 'c', 'c')"
+        )
+        for i in range(1, 151):
+            name = f"สินค้าทดสอบ {i:03d}"
+            connection.execute(
+                "INSERT INTO products (id, name, name_norm, name_fold_light,"
+                " name_fold_heavy) VALUES (?,?,?,?,?)",
+                (i, name, name, name, name),
+            )
+            connection.execute(
+                "INSERT INTO orders (id, customer_id) VALUES (?, 1)", (i,)
+            )
+            connection.execute(
+                "INSERT INTO order_items (order_id, product_id) VALUES (?, ?)",
+                (i, i),
+            )
+            connection.execute(
+                "INSERT INTO products_fts (name_norm, name_fold_light,"
+                " product_id) VALUES (?,?,?)",
+                (name, name, i),
+            )
+        engine = SearchEngine(connection)
+        result = engine.search("สินค้าทดสอบ", limit=5000)
+        assert len(result["products"]) == 100
+        assert result["next_cursor"] is not None
+
+
+class TestInputRobustness:
+    """Untrusted input must degrade or raise clearly, never crash obscurely."""
+
+    def test_numeric_query_does_not_crash(self):
+        engine = make_engine()
+        result = engine.search(123)
+        assert result["detected"] == "product"
+
+    def test_none_query_is_reported_as_none(self):
+        engine = make_engine()
+        result = engine.search(None)
+        assert result["detected"] == "none"
+
+    def test_non_numeric_limit_falls_back_to_default(self):
+        engine = make_engine()
+        result = engine.search("น้ำ", limit="notanint")
+        assert result["products"]
+
+    def test_suggest_with_non_numeric_limit_falls_back(self):
+        engine = make_engine()
+        suggestions = engine.suggest("น้ำ", limit="abc")
+        assert len(suggestions) == 4
+
+    def test_unknown_filter_key_is_ignored(self):
+        engine = make_engine()
+        result = engine.search("น้ำ", filters={"badkey": "x", "store_code": ["101"]})
+        assert result["products"]
+
+    def test_unknown_mode_raises_value_error(self):
+        engine = make_engine()
+        import pytest
+
+        for bad in ["foo", "", None, "AUTO", "Customer"]:
+            with pytest.raises(ValueError):
+                engine.search("น้ำ", mode=bad)
+
 
 class TestFoldLayerPairing:
     """Layers 3 and 3b match a query against a specific pre-computed column.

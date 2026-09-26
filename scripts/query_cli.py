@@ -51,23 +51,31 @@ def main() -> int:
                 "suggestions": engine.suggest(args.suggest, limit=args.limit)
             }
         else:
-            filters = Filters(
-                store_code=tuple(args.store),
-                order_type=tuple(args.order_type),
-                vip_group=tuple(args.vip),
-                dept=tuple(int(v) for v in args.dept),
-                class_code=tuple(int(v) for v in args.class_code),
-                subclass_code=tuple(int(v) for v in args.subclass_code),
-                date_from=args.date_from,
-                date_to=args.date_to,
-            )
-            payload = engine.search(
-                args.query,
-                mode=args.mode,
-                filters=filters,
-                limit=args.limit,
-                cursor=args.cursor,
-            )
+            try:
+                filters = Filters(
+                    store_code=tuple(args.store),
+                    order_type=tuple(args.order_type),
+                    vip_group=tuple(args.vip),
+                    dept=tuple(int(v) for v in args.dept),
+                    class_code=tuple(int(v) for v in args.class_code),
+                    subclass_code=tuple(int(v) for v in args.subclass_code),
+                    date_from=args.date_from,
+                    date_to=args.date_to,
+                )
+            except ValueError as exc:
+                print(f"invalid filter: {exc}", file=sys.stderr)
+                return 2
+            try:
+                payload = engine.search(
+                    args.query,
+                    mode=args.mode,
+                    filters=filters,
+                    limit=args.limit,
+                    cursor=args.cursor,
+                )
+            except ValueError as exc:
+                print(f"invalid search: {exc}", file=sys.stderr)
+                return 2
     finally:
         connection.close()
 
