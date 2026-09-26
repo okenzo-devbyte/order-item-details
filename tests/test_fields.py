@@ -35,6 +35,10 @@ class TestSplitBarcodes:
 
     def test_collapses_duplicates_inside_one_cell(self):
         assert split_barcodes("111 || 111") == ["111"]
+        # non-adjacent, so an implementation that only merges consecutive
+        # parts cannot pass this
+        assert split_barcodes("1 || 2 || 1") == ["1", "2"]
+        assert split_barcodes("9 || 8 || 9 || 8 || 7") == ["9", "8", "7"]
 
     def test_empty_and_none_give_empty_list(self):
         assert split_barcodes("") == []
@@ -101,3 +105,14 @@ class TestToInt:
 
     def test_non_numeric_gives_none(self):
         assert to_int("abc") is None
+
+    def test_never_raises_on_any_string(self):
+        # The import relies on this: one malformed cell must not abort the run.
+        for value in [
+            "inf", "-inf", "+inf", "infinity", "-infinity",
+            "1e400", "1E999", "nan", "NaN", "-nan",
+            "0x10", "1_000", "", "   ", "abc", "12.5.6", "--5",
+            "9" * 400,
+        ]:
+            result = to_int(value)
+            assert result is None or isinstance(result, int), (value, result)

@@ -84,5 +84,5 @@ def to_int(value: object) -> int | None:
         pass
     try:
         return int(float(text))
-    except ValueError:
+    except (ValueError, OverflowError):
         return None
