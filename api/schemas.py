@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import re
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class FilterModel(BaseModel):
@@ -14,6 +17,13 @@ class FilterModel(BaseModel):
     subclass_code: list[int] = Field(default_factory=list)
     date_from: str | None = None
     date_to: str | None = None
+
+    @field_validator("date_from", "date_to")
+    @classmethod
+    def _iso_date(cls, value: str | None) -> str | None:
+        if value is not None and not _ISO_DATE.fullmatch(value):
+            raise ValueError("date must be ISO YYYY-MM-DD")
+        return value
 
 
 class LoginRequest(BaseModel):

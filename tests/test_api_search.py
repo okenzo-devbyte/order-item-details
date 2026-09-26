@@ -88,3 +88,11 @@ def test_search_is_rate_limited(tmp_path):
         assert app_client.post("/api/v1/search", json={"q": "น้ำ"}).status_code == 200
         assert app_client.post("/api/v1/search", json={"q": "น้ำ"}).status_code == 200
         assert app_client.post("/api/v1/search", json={"q": "น้ำ"}).status_code == 429
+
+
+def test_search_bad_date_is_422(client):
+    response = client.post(
+        "/api/v1/search",
+        json={"q": "น้ำ", "filters": {"date_from": "26-Sep-2026"}},
+    )
+    assert response.status_code == 422
