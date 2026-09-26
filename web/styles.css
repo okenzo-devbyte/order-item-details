@@ -1,0 +1,97 @@
+:root {
+  --teal: #0f766e;
+  --line: #d8dee3;
+  --muted: #5b6b78;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #14202b;
+  background: #f6f8fa;
+}
+.view { padding: 16px; max-width: 720px; margin: 0 auto; }
+.view[hidden], [hidden] { display: none; }
+h1 { font-size: 1.25rem; }
+label { display: block; margin: 12px 0 4px; font-size: .85rem; color: var(--muted); }
+input {
+  width: 100%;
+  padding: 14px;
+  font-size: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+button {
+  padding: 14px 18px;
+  font-size: 1rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--teal);
+  color: #fff;
+}
+button.link {
+  background: none;
+  color: var(--muted);
+  padding: 8px;
+}
+.error { color: #b91c1c; min-height: 1.2em; }
+.topbar { display: flex; align-items: center; gap: 8px; }
+.topbar h1 { flex: 1; }
+.who { font-size: .8rem; color: var(--muted); }
+.searchbar { display: flex; gap: 8px; align-items: center; }
+.searchbar input { flex: 1; }
+.chips { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; }
+.chip {
+  background: #fff;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 14px;
+}
+.chip.active { background: var(--teal); color: #fff; border-color: var(--teal); }
+.suggestions {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.suggestions li { padding: 12px; border-bottom: 1px solid #eef1f4; }
+.suggestions li:last-child { border-bottom: 0; }
+.note { font-size: .78rem; color: var(--muted); }
+.results { display: flex; flex-direction: column; }
+.row {
+  border-bottom: 1px solid var(--line);
+  padding: 12px 4px;
+  font-size: .92rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.row .title { font-weight: 600; }
+.row .meta { color: var(--muted); font-size: .82rem; }
+.badge {
+  background: #ffd54f;
+  border-radius: 4px;
+  padding: 0 6px;
+  font-size: .72rem;
+  font-weight: 600;
+}
+.sheet {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .4);
+  display: flex;
+  align-items: flex-end;
+}
+.sheet-body {
+  width: 100%;
+  max-height: 80vh;
+  overflow: auto;
+  background: #fff;
+  border-radius: 16px 16px 0 0;
+  padding: 16px;
+}
+.sheet-actions { display: flex; justify-content: space-between; margin-top: 16px; }

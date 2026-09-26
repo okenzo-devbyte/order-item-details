@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <title>Order Search</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main id="login-view" class="view">
+    <h1>Order Search</h1>
+    <form id="login-form">
+      <label for="username">ชื่อผู้ใช้</label>
+      <input id="username" name="username" autocomplete="username" required autofocus>
+      <label for="password">รหัสผ่าน</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">เข้าสู่ระบบ</button>
+    </form>
+    <p id="login-error" class="error" role="alert"></p>
+  </main>
+
+  <main id="app-view" class="view" hidden>
+    <header class="topbar">
+      <h1>Order Search</h1>
+      <span id="who" class="who"></span>
+      <button id="logout" class="link">ออก</button>
+    </header>
+
+    <form id="search-form" class="searchbar">
+      <input id="search-input" placeholder="ชื่อลูกค้า / สินค้า / บาร์โค้ด" autocomplete="off">
+      <button type="button" id="clear-search" class="link">ล้าง</button>
+      <button type="submit">ค้นหา</button>
+    </form>
+
+    <div class="chips" id="mode-chips">
+      <button type="button" data-mode="auto" class="chip active">อัตโนมัติ</button>
+      <button type="button" data-mode="customer" class="chip">ลูกค้า</button>
+      <button type="button" data-mode="product" class="chip">สินค้า</button>
+      <button type="button" id="open-filters" class="chip">ตัวกรอง</button>
+    </div>
+
+    <ul id="suggestions" class="suggestions" hidden></ul>
+    <p id="result-note" class="note">
+      วันที่คือวันคาดส่ง ไม่ใช่วันสั่งซื้อ
+    </p>
+    <div id="results" class="results"></div>
+  </main>
+
+  <section id="filter-sheet" class="sheet" hidden>
+    <div class="sheet-body">
+      <h2>ตัวกรอง</h2>
+      <div id="filter-fields"></div>
+      <div class="sheet-actions">
+        <button type="button" id="clear-filters" class="link">ล้างตัวกรอง</button>
+        <button type="button" id="apply-filters">ใช้ตัวกรอง</button>
+      </div>
+    </div>
+  </section>
+
+  <script src="/app.js"></script>
+</body>
+</html>
