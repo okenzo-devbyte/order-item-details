@@ -28,8 +28,9 @@ This plan is a living document. These deviations were found by executing it and 
 | Task 10 | `name_fold_light` was asserted identical to `name_fold_heavy` in the README table | corrected, with the pairing rule stated |
 | Task 3 | `to_int` raised `OverflowError` on `'inf'`/`'1e400'`, and returned ints too large to bind to a SQLite INTEGER column, defeating its "degrade to `None`" contract | bound to SQLite's signed 64-bit range; also restricted to plain decimal or integer-valued decimal text, so `312.9`, `1e3`, `1_000` and non-ASCII digits now return `None` instead of a plausible but wrong number |
 | Task 4 | `is_blank` compared `str(value).strip()`, so `Bar_Code` — which is a **list** from `split_barcodes` — was never blank: `str([])` is `"[]"`, not `""`. `test_counts_rows_without_barcode` could not pass | `is_blank` also treats an empty list, tuple, set or dict as blank. `0` and `False` are correctly still non-blank |
+| Task 4 | `validate_rows` returned a 3-tuple `(usable, skipped, report)`, but the only production caller discards `skipped`, and those positions are already encoded in `report.warnings` — so `build.py` would carry a dummy binding | returns `(usable, report)`; the positions moved to `report.skipped_rows`. Task 6's `build_database` below already reflects this. The staler 3-tuple call sites in this plan's Task 4 test listing are superseded by the committed tests |
 
-Test count note: Task 2's suite is 53 tests, not the 44 stated in the original task text. Task 3's is 43, not 26.
+Test count note: Task 2's suite is 53 tests, not the 44 stated in the original task text. Task 3's is 43, not 26. Task 4's is 12, not 11.
 
 ---
 
@@ -1573,7 +1574,7 @@ def build_database(
     function manages its own transaction. The whole insert set is one
     transaction: either every row lands or none does.
     """
-    usable, _skipped, report = validate_rows(rows)
+    usable, report = validate_rows(rows)
     apply_schema(connection)
 
     product_ids: dict[str, int] = {}
