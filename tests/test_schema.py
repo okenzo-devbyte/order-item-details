@@ -144,3 +144,78 @@ class TestSchema:
             connection.execute(
                 "INSERT INTO products (id, name) VALUES (1, 'a')"
             )
+
+    def test_customer_name_norm_is_unique(self):
+        connection = fresh_connection()
+        apply_schema(connection)
+        connection.execute(
+            "INSERT INTO customers (id, name, name_norm, name_fold_light,"
+            " name_fold_heavy) VALUES (1, 'a', 'a', 'a', 'a')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "INSERT INTO customers (id, name, name_norm, name_fold_light,"
+                " name_fold_heavy) VALUES (2, 'b', 'a', 'b', 'b')"
+            )
+
+    def test_expected_indexes_exist(self):
+        connection = fresh_connection()
+        apply_schema(connection)
+        names = {
+            row["name"]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'index'"
+            )
+        }
+        for expected in [
+            "idx_barcodes_barcode",
+            "idx_customers_name_norm",
+            "idx_orders_customer",
+            "idx_orders_store",
+            "idx_orders_type",
+            "idx_orders_vip",
+            "idx_orders_from",
+            "idx_orders_to",
+            "idx_order_items_product",
+        ]:
+            assert expected in names, f"missing index {expected}"
+
+    def test_customer_columns_carry_no_defaults(self):
+        connection = fresh_connection()
+        apply_schema(connection)
+        for row in connection.execute("PRAGMA table_info(customers)"):
+            if row["name"] in ("name_norm", "name_fold_light", "name_fold_heavy"):
+                assert row["dflt_value"] is None, row["name"]
+
+    def test_fold_light_column_matches_a_tone_stripped_query(self):
+        # The widen layer depends on this column being indexed and searchable
+        # on its own, so it is pinned here rather than left to the engine tests.
+        connection = fresh_connection()
+        apply_schema(connection)
+        connection.execute(
+            "INSERT INTO products_fts (name_norm, name_fold_light, product_id)"
+            " VALUES ('น้ำดื่มสิงห์600มลx12', 'นำดืมสิงห600มลx12', 1)"
+        )
+        found = connection.execute(
+            "SELECT product_id FROM products_fts WHERE name_fold_light MATCH ?",
+            ('"สิงห"',),
+        ).fetchall()
+        assert [row["product_id"] for row in found] == [1]
+
+    def test_meta_stores_key_value_pairs(self):
+        connection = fresh_connection()
+        apply_schema(connection)
+        connection.execute("INSERT INTO meta (key, value) VALUES ('a', '1')")
+        row = connection.execute(
+            "SELECT value FROM meta WHERE key = 'a'"
+        ).fetchone()
+        assert row["value"] == "1"
+
+    def test_junction_tables_are_without_rowid(self):
+        connection = fresh_connection()
+        apply_schema(connection)
+        for table in ("product_barcodes", "order_items", "meta"):
+            sql = connection.execute(
+                "SELECT sql FROM sqlite_master WHERE name = ?", (table,)
+            ).fetchone()["sql"]
+            assert "WITHOUT ROWID" in sql, table

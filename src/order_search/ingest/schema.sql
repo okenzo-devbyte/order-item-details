@@ -26,6 +26,8 @@ CREATE TABLE products (
 -- Standalone FTS5 table rather than an external-content table: the build runs
 -- once, so there is no sync problem to get wrong. The product text is
 -- duplicated, which is irrelevant at this data size.
+-- Sync policy: build_database must insert products + products_fts in the same
+-- transaction. No triggers by design; never write one table without the other.
 CREATE VIRTUAL TABLE products_fts USING fts5(
     name_norm,
     name_fold_light,
@@ -59,7 +61,10 @@ CREATE TABLE orders (
     id          INTEGER PRIMARY KEY,
     order_no    TEXT,
     store_code  TEXT,
-    customer_id INTEGER REFERENCES customers(id),
+    -- NOT NULL because validate_rows only passes rows with a real customer
+    -- name, and the builder always assigns one. A NULL here would be an
+    -- unattributable purchase the search could never explain.
+    customer_id INTEGER NOT NULL REFERENCES customers(id),
     order_type  TEXT,
     date_from   TEXT,
     date_to     TEXT,
@@ -75,7 +80,12 @@ CREATE INDEX idx_orders_customer ON orders(customer_id);
 CREATE INDEX idx_orders_store    ON orders(store_code);
 CREATE INDEX idx_orders_type     ON orders(order_type);
 CREATE INDEX idx_orders_vip      ON orders(vip_group);
-CREATE INDEX idx_orders_dates    ON orders(date_from, date_to);
+-- Two single-column date indexes rather than one composite. The overlap query
+-- tests o.date_from <= :to AND o.date_to >= :from, and SQLite can only use the
+-- leftmost column of a composite, so a (date_from, date_to) index serves only
+-- the first bound. With one index per bound the planner picks the tighter side.
+CREATE INDEX idx_orders_from ON orders(date_from);
+CREATE INDEX idx_orders_to   ON orders(date_to);
 
 CREATE TABLE order_items (
     order_id   INTEGER NOT NULL REFERENCES orders(id),
@@ -84,6 +94,10 @@ CREATE TABLE order_items (
     price      REAL,
     PRIMARY KEY (order_id, product_id)
 ) WITHOUT ROWID;
+
+-- The reverse direction of the PK. "Who bought this product?" filters on
+-- product_id, and without this the planner scans the whole junction table.
+CREATE INDEX idx_order_items_product ON order_items(product_id);
 
 CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
