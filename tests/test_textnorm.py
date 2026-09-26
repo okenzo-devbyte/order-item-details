@@ -1,3 +1,5 @@
+import unicodedata
+
 import pytest
 
 from order_search.textnorm import (
@@ -76,10 +78,18 @@ class TestFoldHeavy:
         assert fold_heavy("น้ำดื่ม") == "นาดม"
 
     def test_uses_category_not_combining_class(self):
-        # unicodedata.combining() returns 0 for these characters, so an
-        # implementation using it would leave the string untouched.
-        for text in ["สิงห์", "สึงห์", "น้ำดื่ม", "กั่น", "เก็บ"]:
-            assert fold_heavy(text) != text
+        # These six all report a canonical combining class of 0 while being
+        # category Mn, which is exactly why combining() must not be used.
+        for mark in "\u0E31\u0E34\u0E36\u0E47\u0E4C\u0E4D":
+            assert unicodedata.combining(mark) == 0
+            assert unicodedata.category(mark) == "Mn"
+        assert fold_heavy("กั่น") == "กน"
+        assert fold_heavy("เก็บ") == "เกบ"
+        assert fold_heavy("ซีอิ๊ว") == "ซอว"
+        # 'ช' is a spacing consonant and must survive the fold. Without this
+        # case the assertions above would only prove deletion, which any
+        # broken over-aggressive implementation would also satisfy.
+        assert fold_heavy("เชิญ") == "เชญ"
 
     def test_matches_wrong_vowel_and_tone(self):
         assert fold_heavy("สิงห์") == fold_heavy("สึงห์")
@@ -98,7 +108,8 @@ class TestFoldHeavy:
 
     def test_heavy_fold_does_not_merge_the_real_distinct_products(self):
         # Guards the over-fold risk: the pool widener must not collapse
-        # genuinely different product names into one key.
+        # genuinely different product names into one key. The same risk
+        # applies to the light and base forms, so all three are checked.
         import openpyxl
         from conftest import DATA_FILE
 
@@ -110,12 +121,31 @@ class TestFoldHeavy:
             )
         }
         workbook.close()
-        keys = {fold_heavy(name) for name in names}
-        assert len(keys) == len(names)
+        # Pin the product count so a workbook change that shrinks the set
+        # cannot make this test pass vacuously.
+        assert len(names) == 15
+        for fold in (norm, fold_light, fold_heavy):
+            keys = {fold(name) for name in names}
+            assert len(keys) == len(names), fold.__name__
 
     def test_none_and_empty(self):
         assert fold_heavy(None) == ""
         assert fold_heavy("") == ""
+
+
+class TestParallelLevels:
+    def test_all_three_levels_are_space_free_and_parallel(self):
+        for fn in (norm, fold_light, fold_heavy):
+            out = fn(WATER)
+            assert not any(ch.isspace() for ch in out), fn.__name__
+        assert norm(WATER) == "น้ำดื่มสิงห์600มลx12"
+        assert fold_light(WATER) == "นำดืมสิงห600มลx12"
+        assert fold_heavy(WATER) == "นาดมสงห600มลx12"
+
+    def test_light_and_heavy_are_genuinely_different_levels(self):
+        assert fold_light(WATER) != fold_heavy(WATER)
+        assert fold_light("กาแฟ") == "กาแฟ"
+        assert fold_heavy("กาแฟ") == "กาแฟ"
 
 
 class TestParsePackSize:
@@ -144,6 +174,18 @@ class TestParsePackSize:
         assert parse_pack_size(None) is None
         assert parse_pack_size("") is None
 
+    @pytest.mark.parametrize(
+        "name", ["Vitamin Max12", "Box24", "Detox 30", "Complex9"]
+    )
+    def test_latin_word_ending_in_x_is_not_a_pack_size(self, name):
+        assert parse_pack_size(name) is None
+
+    @pytest.mark.parametrize(
+        "name,expected", [("6x12", 12), ("24x6", 6), ("x12", 12)]
+    )
+    def test_compact_pack_notation_still_parses(self, name, expected):
+        assert parse_pack_size(name) == expected
+
 
 class TestBarcodeHelpers:
     def test_digits_only_strips_separators(self):
@@ -167,3 +209,40 @@ class TestBarcodeHelpers:
     @pytest.mark.parametrize("value", ["1234567", "123456789012345", "สิงห์", "", None, "12a45"])
     def test_rejects_non_barcodes(self, value):
         assert is_barcode_like(value) is False
+
+    def test_anything_recognised_as_a_barcode_yields_a_usable_key(self):
+        for value in ["8850250001234", "8850-250001-234", "2146 4546", "12345678"]:
+            assert is_barcode_like(value) is True
+        for value in ["８８５０２５０００１２３４", "٨٨٥٠２٥٠٠٠١٢٣٤", "²" * 8, "⑧" * 8]:
+            assert is_barcode_like(value) is False
+            assert digits_only(value) == ""
+
+    def test_every_real_barcode_is_ascii_and_within_the_recognised_range(self):
+        # The lookup column holds single barcodes, so the source cells must be
+        # split on '||' before storage. This splits inline rather than reusing
+        # split_barcodes(), which arrives with the ingest module in a later
+        # task; that duplication is deliberate, not an oversight.
+        import openpyxl
+
+        from conftest import DATA_FILE
+
+        workbook = openpyxl.load_workbook(DATA_FILE, read_only=True)
+        raw = {
+            row[7]
+            for row in workbook["Order Data"].iter_rows(
+                min_row=2, values_only=True
+            )
+        }
+        workbook.close()
+
+        barcodes = set()
+        for cell in raw:
+            for part in str(cell).split("||"):
+                part = part.strip()
+                if part:
+                    barcodes.add(part)
+
+        assert len(barcodes) == 127
+        for barcode in barcodes:
+            assert barcode.isascii() and barcode.isdigit(), barcode
+            assert is_barcode_like(barcode) is True, barcode

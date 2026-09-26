@@ -8,7 +8,10 @@ _TONE_MARKS = frozenset("\u0E48\u0E49\u0E4A\u0E4B")
 _THANTHAKHAT = "\u0E4C"
 _NIKHAHIT = "\u0E4D"
 _LIGHT_DROP = _TONE_MARKS | {_THANTHAKHAT, _NIKHAHIT}
-_PACK_RE = re.compile(r"x\s*(\d+)\s*$")
+# A pack size is an 'x' preceded by a non-Latin-letter boundary, so Latin words
+# ending in 'x' ('Max12', 'Complex9') are rejected. The digit run is ASCII-only
+# because \d is Unicode-aware and would accept fullwidth digits.
+_PACK_RE = re.compile(r"(?<![A-Za-z])x\s*([0-9]+)\s*$")
 _DIGITS = frozenset("0123456789")
 _BARCODE_SEPARATORS = " -"
 
@@ -32,6 +35,19 @@ def _nfkd(text: str) -> str:
     return unicodedata.normalize("NFKD", str(text))
 
 
+def _letters_n_marks(text: str) -> str:
+    """Keeps only Unicode categories L, N and M.
+
+    All three levels run through this, so norm/fold_light/fold_heavy are
+    parallel views of one text: spaces, punctuation and symbols are removed
+    everywhere. Without it the folds would keep whitespace while norm removed
+    it, and a norm'd query could never equal a stored fold value.
+    """
+    return "".join(
+        ch for ch in text if unicodedata.category(ch)[0] in _KEEP_PREFIXES
+    )
+
+
 def norm(text: str | None) -> str:
     """Base search form: NFD, keep categories L/N/M, drop whitespace and
     punctuation, lowercase.
@@ -42,12 +58,7 @@ def norm(text: str | None) -> str:
     """
     if not text:
         return ""
-    kept = [
-        ch
-        for ch in _nfd(text)
-        if unicodedata.category(ch)[0] in _KEEP_PREFIXES
-    ]
-    return "".join(kept).lower()
+    return _letters_n_marks(_nfd(text)).lower()
 
 
 def fold_light(text: str | None) -> str:
@@ -58,7 +69,9 @@ def fold_light(text: str | None) -> str:
     """
     if not text:
         return ""
-    return "".join(ch for ch in _nfd(text) if ch not in _LIGHT_DROP).lower()
+    return "".join(
+        ch for ch in _letters_n_marks(_nfd(text)) if ch not in _LIGHT_DROP
+    ).lower()
 
 
 def fold_heavy(text: str | None) -> str:
@@ -76,7 +89,7 @@ def fold_heavy(text: str | None) -> str:
     kept = [
         ch for ch in _nfkd(text) if unicodedata.category(ch) != "Mn"
     ]
-    return "".join(kept).lower()
+    return _letters_n_marks("".join(kept)).lower()
 
 
 def parse_pack_size(name: str | None) -> int | None:
@@ -91,16 +104,35 @@ def parse_pack_size(name: str | None) -> int | None:
 
 
 def digits_only(text: str | None) -> str:
+    """Returns the ASCII digits 0-9 of `text` and nothing else.
+
+    Returns '' for anything that contains no ASCII digit, including non-ASCII
+    digit lookalikes such as fullwidth '８', Arabic-Indic '٨' and superscript
+    '²'. This is deliberate: the lookup column holds ASCII barcodes, so a
+    non-ASCII key could never match. Only meaningful as the key builder for a
+    query that is_barcode_like has already approved — is_barcode_like applies
+    the same ASCII restriction so the two never disagree.
+    """
     if not text:
         return ""
     return "".join(ch for ch in str(text) if ch in _DIGITS)
 
 
 def is_barcode_like(query: str | None) -> bool:
-    """True when the query is 8 to 14 digits, ignoring spaces and dashes."""
+    """True when the query is 8 to 14 ASCII digits, ignoring spaces and dashes.
+
+    The isascii() guard is required, not decorative: str.isdigit() is true for
+    878 non-ASCII code points, which digits_only discards, so without it a
+    non-ASCII query would be accepted as a barcode and then silently build an
+    empty lookup key.
+    """
     if not query:
         return False
     compact = "".join(
         ch for ch in str(query) if ch not in _BARCODE_SEPARATORS
     )
-    return compact.isdigit() and 8 <= len(compact) <= 14
+    return (
+        compact.isascii()
+        and compact.isdigit()
+        and 8 <= len(compact) <= 14
+    )
