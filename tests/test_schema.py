@@ -1,5 +1,7 @@
 import sqlite3
 
+import pytest
+
 from order_search.ingest.build import apply_schema
 from order_search.ingest.schema_path import SCHEMA_PATH
 
@@ -93,8 +95,14 @@ class TestSchema:
         # so the index must not be UNIQUE or the import would crash
         connection = fresh_connection()
         apply_schema(connection)
-        connection.execute("INSERT INTO products (id, name) VALUES (1, 'a')")
-        connection.execute("INSERT INTO products (id, name) VALUES (2, 'b')")
+        connection.execute(
+            "INSERT INTO products (id, name, name_norm, name_fold_light,"
+            " name_fold_heavy) VALUES (1, 'a', 'a', 'a', 'a')"
+        )
+        connection.execute(
+            "INSERT INTO products (id, name, name_norm, name_fold_light,"
+            " name_fold_heavy) VALUES (2, 'b', 'b', 'b', 'b')"
+        )
         connection.execute(
             "INSERT INTO product_barcodes (product_id, barcode) VALUES (1, '111')"
         )
@@ -106,3 +114,21 @@ class TestSchema:
             " ORDER BY product_id"
         ).fetchall()
         assert [row["product_id"] for row in rows] == [1, 2]
+
+    @pytest.mark.parametrize(
+        "column", ["name_norm", "name_fold_light", "name_fold_heavy"]
+    )
+    def test_normalized_columns_reject_missing_values(self, column):
+        # A product with no normalized text could never be found by search, so
+        # the columns must fail loudly rather than defaulting to empty strings.
+        connection = fresh_connection()
+        apply_schema(connection)
+        values = {"name_norm": "x", "name_fold_light": "x", "name_fold_heavy": "x"}
+        values[column] = None
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "INSERT INTO products (id, name, name_norm, name_fold_light,"
+                " name_fold_heavy) VALUES (1, 'x', :name_norm, :name_fold_light,"
+                " :name_fold_heavy)",
+                values,
+            )

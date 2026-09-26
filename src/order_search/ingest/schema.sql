@@ -13,9 +13,9 @@ DROP TABLE IF EXISTS meta;
 CREATE TABLE products (
     id              INTEGER PRIMARY KEY,
     name            TEXT    NOT NULL,
-    name_norm       TEXT    NOT NULL DEFAULT '',
-    name_fold_light TEXT    NOT NULL DEFAULT '',
-    name_fold_heavy TEXT    NOT NULL DEFAULT '',
+    name_norm       TEXT    NOT NULL,
+    name_fold_light TEXT    NOT NULL,
+    name_fold_heavy TEXT    NOT NULL,
     dept            INTEGER,
     class_code      INTEGER,
     subclass_code   INTEGER,
