@@ -103,6 +103,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; img-src 'self' data:; "
+            "style-src 'self'; script-src 'self'; connect-src 'self'"
+        )
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
         if settings.cookie_secure:

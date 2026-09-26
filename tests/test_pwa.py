@@ -37,9 +37,26 @@ def test_service_worker_is_served(client):
 
 def test_service_worker_never_caches_api(client):
     text = client.get("/sw.js").text
-    assert "/api/" not in text.split("const SHELL")[0]
-    shell_line = [line for line in text.splitlines() if "const SHELL" in line][0]
-    assert "api" not in shell_line
+    shell_block = text.split("const SHELL = [", 1)[1].split("]", 1)[0]
+    entries = [
+        line.strip().strip(",").strip('"')
+        for line in shell_block.splitlines()
+        if line.strip()
+    ]
+    assert entries
+    assert not any(entry.startswith("/api") for entry in entries)
+
+
+def test_api_has_content_security_policy(client):
+    response = client.get("/healthz")
+    assert "default-src 'self'" in response.headers["content-security-policy"]
+
+
+def test_app_js_escapes_server_values(client):
+    text = client.get("/app.js").text
+    assert "function escapeHtml" in text
+    assert "escapeHtml(customer.name)" in text
+    assert "escapeHtml(product.name)" in text
 
 
 def test_styles_and_app_js_are_served(client):

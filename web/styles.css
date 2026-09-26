@@ -72,6 +72,7 @@ button.link {
 }
 .row .title { font-weight: 600; }
 .row .meta { color: var(--muted); font-size: .82rem; }
+.row.sub { padding-left: 20px; }
 .badge {
   background: #ffd54f;
   border-radius: 4px;

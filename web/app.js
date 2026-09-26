@@ -13,12 +13,30 @@ function cookie(name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-async function api(path, options = {}) {
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[ch]));
+}
+
+async function api(path, options = {}, retry = true) {
   const headers = options.headers || {};
   if (options.body) headers["Content-Type"] = "application/json";
   const csrf = cookie("csrf_token");
   if (csrf) headers["X-CSRF-Token"] = csrf;
   const response = await fetch(path, { ...options, headers });
+  if (response.status === 401 && retry && path !== "/api/v1/auth/refresh") {
+    const refreshed = await fetch("/api/v1/auth/refresh", { method: "POST" });
+    if (refreshed.ok) {
+      return api(path, options, false);
+    }
+    showLogin();
+    throw new Error("unauthenticated");
+  }
   if (response.status === 401) {
     showLogin();
     throw new Error("unauthenticated");
@@ -54,27 +72,30 @@ function renderResults(payload) {
     const card = document.createElement("div");
     card.className = "row";
     card.innerHTML =
-      `<span class="title">${customer.name}</span>` +
-      `<span class="meta">${customer.order_count} ออเดอร์ · ${customer.products.length} สินค้า</span>`;
+      `<span class="title">${escapeHtml(customer.name)}</span>` +
+      `<span class="meta">${escapeHtml(customer.order_count)} ออเดอร์ · ` +
+      `${escapeHtml((customer.products || []).length)} สินค้า</span>`;
+    container.appendChild(card);
     (customer.products || []).forEach((product) => {
       const line = document.createElement("div");
-      line.className = "row";
+      line.className = "row sub";
       line.innerHTML =
-        `<span>${product.name}</span>` +
-        `<span class="meta">${product.order_count}× · ${product.last_date || "-"} · ` +
-        `${(product.stores || []).join(", ") || "-"}</span>`;
+        `<span>${escapeHtml(product.name)}</span>` +
+        `<span class="meta">${escapeHtml(product.order_count)}× · ` +
+        `${escapeHtml(product.last_date || "-")} · ` +
+        `${escapeHtml((product.stores || []).join(", ") || "-")}</span>`;
       container.appendChild(line);
     });
-    container.appendChild(card);
   });
 
   products.forEach((product) => {
     const line = document.createElement("div");
     line.className = "row";
     line.innerHTML =
-      `<span class="title">${product.name}</span>` +
-      `<span class="meta">${product.customer_count} คน · ${product.order_count} ออเดอร์ · ` +
-      `ล่าสุด ${product.last_date || "-"}</span>`;
+      `<span class="title">${escapeHtml(product.name)}</span>` +
+      `<span class="meta">${escapeHtml(product.customer_count)} คน · ` +
+      `${escapeHtml(product.order_count)} ออเดอร์ · ล่าสุด ` +
+      `${escapeHtml(product.last_date || "-")}</span>`;
     container.appendChild(line);
   });
 
@@ -178,10 +199,10 @@ function collectFilters() {
     const values = Array.from(select.selectedOptions).map((o) => o.value);
     if (values.length) filters[select.dataset.filterKey] = values;
   });
-  const from = document.getElementById("filter-date-from").value;
-  const to = document.getElementById("filter-date-to").value;
-  if (from) filters.date_from = from;
-  if (to) filters.date_to = to;
+  const fromField = document.getElementById("filter-date-from");
+  const toField = document.getElementById("filter-date-to");
+  if (fromField && fromField.value) filters.date_from = fromField.value;
+  if (toField && toField.value) filters.date_to = toField.value;
   return filters;
 }
 
@@ -247,8 +268,10 @@ function init() {
     document.querySelectorAll("[data-filter-key]").forEach((select) => {
       select.selectedIndex = -1;
     });
-    document.getElementById("filter-date-from").value = "";
-    document.getElementById("filter-date-to").value = "";
+    const fromField = document.getElementById("filter-date-from");
+    const toField = document.getElementById("filter-date-to");
+    if (fromField) fromField.value = "";
+    if (toField) toField.value = "";
     state.filters = {};
   });
 
