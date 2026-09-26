@@ -26,8 +26,10 @@ This plan is a living document. These deviations were found by executing it and 
 | Task 6 | `name_fold_light` and `name_fold_heavy` were both asserted as `นาดมสงห600มลx12`; the two levels must differ | light is `นำดืมสิงห600มลx12`, heavy is `นาดมสงห600มลx12` |
 | Task 10 | `_product_ids_by_fts` passed a `norm()`-transformed query at the `name_fold_light` column, which returns zero rows because a mark-carrying query is not a substring of a tone-stripped column | each layer now transforms the query with the same function that built its column, the `MATCH` is scoped to that column, and the length guard is per column because light-folding can shorten a 3-character query to 2 |
 | Task 10 | `name_fold_light` was asserted identical to `name_fold_heavy` in the README table | corrected, with the pairing rule stated |
+| Task 3 | `to_int` raised `OverflowError` on `'inf'`/`'1e400'`, and returned ints too large to bind to a SQLite INTEGER column, defeating its "degrade to `None`" contract | bound to SQLite's signed 64-bit range; also restricted to plain decimal or integer-valued decimal text, so `312.9`, `1e3`, `1_000` and non-ASCII digits now return `None` instead of a plausible but wrong number |
+| Task 4 | `is_blank` compared `str(value).strip()`, so `Bar_Code` — which is a **list** from `split_barcodes` — was never blank: `str([])` is `"[]"`, not `""`. `test_counts_rows_without_barcode` could not pass | `is_blank` also treats an empty list, tuple, set or dict as blank. `0` and `False` are correctly still non-blank |
 
-Test count note: Task 2's suite is 53 tests, not the 44 stated in the original task text.
+Test count note: Task 2's suite is 53 tests, not the 44 stated in the original task text. Task 3's is 43, not 26.
 
 ---
 
