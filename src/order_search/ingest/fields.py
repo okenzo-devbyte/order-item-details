@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 
 BARCODE_SEPARATOR = "||"
 DATE_FORMAT = "%d-%b-%Y"
 DATE_RANGE_SEPARATOR = " - "
+
+# Only plain decimal integers, or integer-valued decimals such as '312.0'.
+# Scientific notation, digit separators and fractional values are rejected
+# because they would coerce to a plausible but wrong integer for columns like
+# Dept and Class, where a wrong value is indistinguishable from a real one.
+_INT_TEXT_RE = re.compile(r"[+-]?[0-9]+(?:\.[0]+)?")
 
 # SQLite INTEGER is signed 64-bit. A value outside this range parses fine but
 # then raises OverflowError at bind time, which would abort an import. Returning
@@ -27,7 +34,10 @@ def split_barcodes(value: object) -> list[str]:
     stores one barcode per row and lookup is an exact match, so a compound cell
     kept intact could never be found. 148 of the 1000 source rows are compound.
 
-    Order is preserved and repeats inside one cell are collapsed.
+    Order is preserved and repeats inside one cell are collapsed. Duplicates
+    are collapsed only within a single cell; global uniqueness is the caller's
+    responsibility, since the same barcode may legitimately appear in several
+    cells.
     """
     parts = [part.strip() for part in clean_str(value).split(BARCODE_SEPARATOR)]
     seen: set[str] = set()
@@ -77,23 +87,20 @@ def parse_date_range(value: object) -> tuple[date | None, date | None]:
 
 
 def to_int(value: object) -> int | None:
-    """Coerces to int, tolerating int, numeric string and float string.
+    """Coerces to int, accepting only plain decimal integers or integer-valued
+    decimals such as '312' or '312.0'.
 
     Returns None rather than raising, so a malformed cell degrades to a missing
-    value instead of aborting a 1000-row import. Values outside SQLite's signed
-    64-bit range also return None, because they would otherwise raise
+    value instead of a wrong one, and instead of aborting a 1000-row import.
+    Fractional values, scientific notation and digit separators are rejected
+    because their coercion would be plausible but wrong. Values outside SQLite's
+    signed 64-bit range also return None, because they would otherwise raise
     OverflowError when bound to an INTEGER column.
     """
     text = clean_str(value)
-    if not text:
+    if not text or not _INT_TEXT_RE.fullmatch(text):
         return None
-    try:
-        result = int(text)
-    except ValueError:
-        try:
-            result = int(float(text))
-        except (ValueError, OverflowError):
-            return None
+    result = int(text.split(".")[0])
     if not (SQLITE_INT_MIN <= result <= SQLITE_INT_MAX):
         return None
     return result

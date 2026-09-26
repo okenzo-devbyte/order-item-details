@@ -1,5 +1,7 @@
 from datetime import date
 
+import pytest
+
 from order_search.ingest.fields import (
     clean_str,
     parse_date_range,
@@ -128,3 +130,29 @@ class TestToInt:
         ]:
             result = to_int(value)
             assert result is None or isinstance(result, int), (value, result)
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ("312", 312),
+            ("-5", -5),
+            ("+8", 8),
+            ("312.0", 312),
+            ("-5.00", -5),
+            ("0", 0),
+            (" 312 ", 312),
+            ("312.9", None),
+            ("0.5", None),
+            ("1e3", None),
+            ("1E999", None),
+            ("1_000", None),
+            ("１２３", None),
+            ("١٢٣", None),
+            ("12a", None),
+            ("312.0.0", None),
+            ("", None),
+            (None, None),
+        ],
+    )
+    def test_exact_coercion_results(self, value, expected):
+        assert to_int(value) == expected
