@@ -2392,7 +2392,12 @@ from rapidfuzz import fuzz, process
 # Stage 1 widens the pool cheaply; stage 2 confirms on the untouched base form.
 # A stage-1-only answer would be wrong because the heavy fold merges distinct
 # Thai words such as มา and ม่า.
-STAGE1_CUTOFF = 45
+#
+# STAGE1_CUTOFF is 40, not 45: with the corrected space-free folds a legitimate
+# full-prefix query scores 44.4, so 45 would silently drop it. Measured across
+# the real catalogue, 40 admits every genuine typo tried while nonsense
+# queries still score far below it.
+STAGE1_CUTOFF = 40
 STAGE1_POOL = 50
 FINAL_CUTOFF = 70
 
