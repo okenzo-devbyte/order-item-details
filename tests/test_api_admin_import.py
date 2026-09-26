@@ -90,3 +90,18 @@ def test_rollback_unknown_version_is_404(client):
         headers=csrf(client),
     )
     assert response.status_code == 404
+
+
+def test_baseline_version_is_seeded(client):
+    body = client.get("/api/v1/admin/import/versions").json()
+    assert len(body["versions"]) >= 1
+    assert any(version["created_by"] is None for version in body["versions"])
+
+
+def test_corrupt_xlsx_is_422(client):
+    response = client.post(
+        "/api/v1/admin/import",
+        files={"file": ("broken.xlsx", b"not a real workbook", "application/octet-stream")},
+        headers=csrf(client),
+    )
+    assert response.status_code == 422

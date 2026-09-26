@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import sqlite3
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+from zipfile import BadZipFile
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from openpyxl.utils.exceptions import InvalidFileException
+
+from order_search.ingest.excel_reader import SourceFormatError
 
 from .. import audit, security, users
 from ..db_helpers import client_ip, get_app_db, get_settings, user_agent
@@ -116,16 +120,10 @@ async def import_workbook(
 
     versions_dir: Path = settings.versions_dir
     versions_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(
-        suffix=".xlsx", dir=versions_dir, delete=False
-    ) as handle:
-        handle.write(data)
-        temp_xlsx = Path(handle.name)
-
     try:
-        plaintext, report = build_snapshot_bytes(temp_xlsx)
-    finally:
-        temp_xlsx.unlink(missing_ok=True)
+        plaintext, report = build_snapshot_bytes(io.BytesIO(data))
+    except (BadZipFile, InvalidFileException, SourceFormatError):
+        raise HTTPException(422, "workbook could not be read") from None
 
     sealed = snapshot.seal_bytes(plaintext)
     digest = hashlib.sha256(sealed).hexdigest()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 from openpyxl import load_workbook
 
@@ -34,13 +34,16 @@ def _dedupe_headers(values: list[Any]) -> list[str]:
     return out
 
 
-def read_order_rows(path: str | Path) -> list[dict[str, Any]]:
+def read_order_rows(path: str | Path | BinaryIO) -> list[dict[str, Any]]:
     """Reads the 'Order Data' worksheet into a list of dicts keyed by header.
 
     'Bar_Code' becomes a list of barcodes, 'Original Expected Date' becomes
-    'date_from' and 'date_to', and the numeric columns become ints.
+    'date_from' and 'date_to', and the numeric columns become ints. A binary
+    stream is accepted as well as a path, so an uploaded workbook can be
+    parsed without ever touching the disk.
     """
-    workbook = load_workbook(Path(path), read_only=True, data_only=True)
+    source = Path(path) if isinstance(path, (str, Path)) else path
+    workbook = load_workbook(source, read_only=True, data_only=True)
     try:
         if SHEET_NAME not in workbook.sheetnames:
             raise SourceFormatError(

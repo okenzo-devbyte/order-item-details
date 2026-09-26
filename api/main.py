@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import sqlite3
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -54,6 +56,18 @@ async def lifespan(app: FastAPI):
     app.state.rate_limiter = RateLimiter(settings.rate_limit_per_minute)
     if bootstrap_admin(db, settings.admin_username, settings.admin_password):
         logger.info("bootstrap admin account created")
+    if db.query_one("SELECT COUNT(*) AS n FROM import_versions")["n"] == 0:
+        sealed = Path(settings.snapshot_file).read_bytes()
+        db.run(
+            "INSERT INTO import_versions (path, sha256, row_count,"
+            " product_count, customer_count, is_current, created_at,"
+            " created_by) VALUES (?,?,NULL,NULL,NULL,1,?,NULL)",
+            (
+                str(settings.snapshot_file),
+                hashlib.sha256(sealed).hexdigest(),
+                datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            ),
+        )
     try:
         yield
     finally:
