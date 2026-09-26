@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from order_search.search.filters import Filters
 
@@ -53,3 +53,33 @@ def suggest(
         payload.q, limit=payload.limit
     )
     return {"suggestions": suggestions}
+
+
+@router.get("/customers/{customer_id}/history")
+def customer_history(
+    customer_id: int,
+    request: Request,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    user=Depends(security.rate_limit),
+):
+    try:
+        filters = Filters(date_from=date_from, date_to=date_to)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from None
+    history = request.app.state.snapshot.customer_history(customer_id, filters)
+    if not history:
+        raise HTTPException(404, "customer not found")
+    return history[0]
+
+
+@router.get("/products/{product_id}/customers")
+def product_customers(
+    product_id: int,
+    request: Request,
+    user=Depends(security.rate_limit),
+):
+    results = request.app.state.snapshot.product_customers(product_id)
+    if not results:
+        raise HTTPException(404, "product not found")
+    return results[0]

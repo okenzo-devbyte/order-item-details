@@ -96,3 +96,34 @@ def test_search_bad_date_is_422(client):
         json={"q": "น้ำ", "filters": {"date_from": "26-Sep-2026"}},
     )
     assert response.status_code == 422
+
+
+def test_customer_history_endpoint(client):
+    response = client.get("/api/v1/customers/1/history")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["customer_id"] == 1
+    assert body["products"]
+
+
+def test_customer_history_bad_date_is_422(client):
+    response = client.get(
+        "/api/v1/customers/1/history", params={"date_from": "26-Sep-2026"}
+    )
+    assert response.status_code == 422
+
+
+def test_customer_history_unknown_id_is_404(client):
+    assert client.get("/api/v1/customers/99999/history").status_code == 404
+
+
+def test_product_customers_endpoint(client):
+    response = client.get("/api/v1/products/1/customers")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["product_id"] == 1
+    assert body["customers"]
+
+
+def test_product_customers_unknown_id_is_404(client):
+    assert client.get("/api/v1/products/99999/customers").status_code == 404
