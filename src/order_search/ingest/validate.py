@@ -26,6 +26,7 @@ class ImportReport:
     missing_barcode_rows: int = 0
     unparsed_date_rows: int = 0
     missing_pack_size_products: int = 0
+    skipped_rows: list[int] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
@@ -46,6 +47,10 @@ class ImportReport:
 
 
 def is_blank(value: object) -> bool:
+    """A value counts as blank when it is None, a whitespace-only string, or an
+    empty container (list, tuple, set or dict). Numbers such as ``0`` and
+    ``False`` are not blank.
+    """
     if value is None:
         return True
     if isinstance(value, (list, tuple, set, dict)):
@@ -55,14 +60,15 @@ def is_blank(value: object) -> bool:
 
 def validate_rows(
     rows: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[int], ImportReport]:
-    """Splits rows into (usable, skipped_sheet_row_numbers, report).
+) -> tuple[list[dict[str, Any]], ImportReport]:
+    """Splits rows into (usable, report).
 
     Row numbers are 1-based positions in the worksheet counting the header as
     row 1, so a number in a warning can be looked up directly in Excel. A row is
     skipped only when a field the search cannot work without is missing: without
     a product name there is nothing to search for, and without a customer name
-    the purchase history cannot be attributed to anyone.
+    the purchase history cannot be attributed to anyone. The skipped row numbers
+    are recorded on ``report.skipped_rows`` and mirrored in ``report.warnings``.
     """
     report = ImportReport(rows_read=len(rows))
     usable: list[dict[str, Any]] = []
@@ -82,6 +88,7 @@ def validate_rows(
             report.unparsed_date_rows += 1
         usable.append(row)
 
+    report.skipped_rows = skipped
     report.rows_skipped = len(skipped)
     report.rows_imported = len(usable)
-    return usable, skipped, report
+    return usable, report
