@@ -92,3 +92,33 @@ def test_revoke_all_for_user(tmp_path):
             timedelta(minutes=30),
         )
     db.close()
+
+
+def test_concurrent_rotation_allows_only_one(tmp_path):
+    import threading
+
+    db, user = make_db_with_user(tmp_path)
+    _, refresh = security.issue_session(
+        db, SECRET, user, timedelta(minutes=15), timedelta(days=7)
+    )
+    outcomes = []
+    barrier = threading.Barrier(2)
+
+    def worker():
+        barrier.wait()
+        try:
+            security.rotate_refresh(
+                db, SECRET, refresh, timedelta(minutes=15),
+                timedelta(days=7), timedelta(minutes=30),
+            )
+            outcomes.append("ok")
+        except security.InvalidToken:
+            outcomes.append("rejected")
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    db.close()
+    assert sorted(outcomes) == ["ok", "rejected"]

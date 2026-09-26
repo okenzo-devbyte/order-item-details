@@ -89,15 +89,20 @@ def rotate_refresh(
     payload = decode_token(secret, token, REFRESH)
     jti = payload.get("jti")
     row = db.query_one("SELECT * FROM refresh_tokens WHERE id = ?", (jti,))
-    if row is None or row["revoked"]:
+    if row is None:
+        raise InvalidToken("refresh token unknown")
+    claimed = db.query_one(
+        "UPDATE refresh_tokens SET revoked = 1 WHERE id = ? AND revoked = 0"
+        " RETURNING id",
+        (jti,),
+    )
+    if claimed is None:
         raise InvalidToken("refresh token revoked")
     if _now() - _parse_iso(row["last_used_at"]) > idle_timeout:
-        db.run("UPDATE refresh_tokens SET revoked = 1 WHERE id = ?", (jti,))
         raise InvalidToken("session idle timeout")
     user = users.get_by_id(db, int(payload["sub"]))
     if user is None or not user["is_active"]:
         raise InvalidToken("user inactive")
-    db.run("UPDATE refresh_tokens SET revoked = 1 WHERE id = ?", (jti,))
     return issue_session(db, secret, user, access_ttl, refresh_ttl)
 
 
