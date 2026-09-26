@@ -6,6 +6,13 @@ BARCODE_SEPARATOR = "||"
 DATE_FORMAT = "%d-%b-%Y"
 DATE_RANGE_SEPARATOR = " - "
 
+# SQLite INTEGER is signed 64-bit. A value outside this range parses fine but
+# then raises OverflowError at bind time, which would abort an import. Returning
+# None keeps this function's promise that a malformed cell degrades to a missing
+# value rather than a crash.
+SQLITE_INT_MIN = -9223372036854775808
+SQLITE_INT_MAX = 9223372036854775807
+
 
 def clean_str(value: object) -> str:
     if value is None:
@@ -73,16 +80,20 @@ def to_int(value: object) -> int | None:
     """Coerces to int, tolerating int, numeric string and float string.
 
     Returns None rather than raising, so a malformed cell degrades to a missing
-    value instead of aborting a 1000-row import.
+    value instead of aborting a 1000-row import. Values outside SQLite's signed
+    64-bit range also return None, because they would otherwise raise
+    OverflowError when bound to an INTEGER column.
     """
     text = clean_str(value)
     if not text:
         return None
     try:
-        return int(text)
+        result = int(text)
     except ValueError:
-        pass
-    try:
-        return int(float(text))
-    except (ValueError, OverflowError):
+        try:
+            result = int(float(text))
+        except (ValueError, OverflowError):
+            return None
+    if not (SQLITE_INT_MIN <= result <= SQLITE_INT_MAX):
         return None
+    return result

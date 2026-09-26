@@ -106,6 +106,18 @@ class TestToInt:
     def test_non_numeric_gives_none(self):
         assert to_int("abc") is None
 
+    def test_out_of_sqlite_range_gives_none(self):
+        # These parse as Python ints but cannot be stored in a SQLite INTEGER
+        # column, so they must degrade to None like any other malformed cell.
+        assert to_int("9" * 400) is None
+        assert to_int("9223372036854775808") is None   # max + 1
+        assert to_int("-9223372036854775809") is None  # min - 1
+        assert to_int("1e400") is None
+
+    def test_sqlite_range_boundaries_are_kept(self):
+        assert to_int("9223372036854775807") == 9223372036854775807
+        assert to_int("-9223372036854775808") == -9223372036854775808
+
     def test_never_raises_on_any_string(self):
         # The import relies on this: one malformed cell must not abort the run.
         for value in [
