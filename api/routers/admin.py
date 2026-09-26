@@ -13,6 +13,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 from order_search.ingest.excel_reader import SourceFormatError
 
 from .. import audit, security, users
+from ..audit import list_entries
 from ..db_helpers import client_ip, get_app_db, get_settings, user_agent
 from ..imports import build_snapshot_bytes
 from ..schemas import RollbackRequest, UserCreateRequest, UserPatchRequest
@@ -93,8 +94,23 @@ def patch_user(
 
 
 @router.get("/audit")
-def get_audit(request: Request, _admin=Depends(security.require_admin)):
-    return {"entries": []}
+def get_audit(
+    request: Request,
+    limit: int = 100,
+    before_id: int | None = None,
+    user_id: int | None = None,
+    action: str | None = None,
+    _admin=Depends(security.require_admin),
+):
+    limit = max(1, min(limit, 500))
+    entries = list_entries(
+        get_app_db(request),
+        limit=limit,
+        before_id=before_id,
+        user_id=user_id,
+        action=action,
+    )
+    return {"entries": entries}
 
 
 def _timestamp() -> str:
