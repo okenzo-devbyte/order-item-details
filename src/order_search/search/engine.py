@@ -178,6 +178,18 @@ class SearchEngine:
             for row in rows
         ]
 
+    def customer_history(
+        self, customer_id: int, filters: Any = None
+    ) -> list[dict[str, Any]]:
+        """Public wrapper for a single customer's purchase history."""
+        return self._customer_results([customer_id], _as_filters(filters))
+
+    def product_customers(
+        self, product_id: int, filters: Any = None
+    ) -> list[dict[str, Any]]:
+        """Public wrapper for the customers of a single product."""
+        return self._product_results([product_id], _as_filters(filters), 1, 0)
+
     # ------------------------------------------------------------- layer 2 / 4
 
     def _product_ids(self, detection) -> list[int]:
