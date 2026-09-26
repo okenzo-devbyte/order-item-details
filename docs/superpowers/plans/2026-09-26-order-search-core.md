@@ -12,6 +12,25 @@
 
 ---
 
+## Errata — corrections found during execution
+
+This plan is a living document. These deviations were found by executing it and are already applied below; they are listed here so a reader knows what changed and why.
+
+| Where | What was wrong | Correction |
+|-------|----------------|------------|
+| Task 1 | No `.gitignore`, so `git add -A` would have committed the whole `.venv` | `.gitignore` added in the scaffold commit; it excludes `.venv/`, `build/`, `*.db`, `__pycache__/` and `.pytest_cache/` |
+| Task 2 | `fold_light`/`fold_heavy` dropped only marks, leaving spaces and punctuation, so they were not parallel to `norm` and no normalized query could ever match them | all three levels now filter Unicode category `L/N/M`, via one shared `_letters_n_marks` helper |
+| Task 2 | `fold_heavy` used NFD, so `ำ` (U+0E33, a spacing char with a *compatibility* decomposition) survived and a user typing `า` for `ำ` did not match | `fold_heavy` uses NFKD; verified `fold_heavy('น้ำดื่ม') == 'นาดม'` with zero new collisions across the 15 real products |
+| Task 2 | `is_barcode_like` used `str.isdigit()`, which is true for 878 non-ASCII code points that `digits_only` discards, so such a query was classified as a barcode and then silently looked up nothing | the check now also requires `isascii()` |
+| Task 2 | `_PACK_RE` had no left boundary and Unicode-aware `\d`, so `'Box24'` → 24 and `'packs ８９ x 12'` → 12 | `r"(?<![A-Za-z])x\s*([0-9]+)\s*$"` |
+| Task 6 | `name_fold_light` and `name_fold_heavy` were both asserted as `นาดมสงห600มลx12`; the two levels must differ | light is `นำดืมสิงห600มลx12`, heavy is `นาดมสงห600มลx12` |
+| Task 10 | `_product_ids_by_fts` passed a `norm()`-transformed query at the `name_fold_light` column, which returns zero rows because a mark-carrying query is not a substring of a tone-stripped column | each layer now transforms the query with the same function that built its column, the `MATCH` is scoped to that column, and the length guard is per column because light-folding can shorten a 3-character query to 2 |
+| Task 10 | `name_fold_light` was asserted identical to `name_fold_heavy` in the README table | corrected, with the pairing rule stated |
+
+Test count note: Task 2's suite is 53 tests, not the 44 stated in the original task text.
+
+---
+
 ## Scope of this plan
 
 This plan covers spec sections 2, 4, 5 and the data half of 9. It produces a working, tested search engine that can be run from the command line.
@@ -1337,8 +1356,12 @@ class TestBuildDatabase:
             ("น้ำดื่มสิงห์ 600 มล. x 12",),
         ).fetchone()
         assert row["name_norm"] == "น้ำดื่มสิงห์600มลx12"
-        assert row["name_fold_light"] == "นาดมสงห600มลx12"
+        assert row["name_fold_light"] == "นำดืมสิงห600มลx12"
         assert row["name_fold_heavy"] == "นาดมสงห600มลx12"
+        # The three levels must be genuinely different views, not copies. An
+        # earlier draft of this plan had light and heavy identical here, which
+        # would have made the second level pointless.
+        assert row["name_fold_light"] != row["name_fold_heavy"]
 
     def test_vip_tier_stays_on_the_order_line(self):
         # สุรชัย carries all four tiers across their own orders
@@ -2717,6 +2740,56 @@ class TestProductMode:
         assert result["products"] == []
         assert result["customers"] == []
 
+
+class TestFoldLayerPairing:
+    """Layers 3 and 3b match a query against a specific pre-computed column.
+    The query must be transformed by the same function that built that column.
+    Getting this wrong returns zero rows silently rather than raising, so these
+    tests exist to make a mismatched pairing fail loudly.
+
+    Measured: norm('สิงห์') against name_fold_light yields 0 rows, while
+    fold_light('สิงห์') yields 1.
+    """
+
+    def test_light_fold_column_is_reachable_by_a_tone_stripped_query(self):
+        engine = make_engine()
+        # every one of these loses tone marks or thanthakhat relative to the
+        # stored name, so layer 3 misses and layer 3b must catch them
+        for query in ["สิงห", "สิงห์", "ขาวหอมมะลิ", "นำดืมสิงห", "นำดื่มสิงห"]:
+            result = engine.search(query)
+            assert result["products"], f"layer 3b failed to rescue {query!r}"
+
+    def test_base_column_still_served_by_the_base_form(self):
+        engine = make_engine()
+        # a fully marked query must match through the base column, untouched
+        result = engine.search("น้ำดื่มสิงห์ 600 มล. x 12")
+        assert result["products"][0]["name"] == "น้ำดื่มสิงห์ 600 มล. x 12"
+
+    def test_three_character_query_that_shrinks_when_light_folded(self):
+        engine = make_engine()
+        # norm('น้ำ') is 3 characters, so the base column can serve it, but
+        # fold_light('น้ำ') is 'นำ', only 2, which the trigram index cannot
+        # match. The base column must therefore still carry this query.
+        result = engine.search("น้ำ")
+        assert len(result["products"]) == 4
+
+    def test_scoped_match_does_not_cross_columns(self):
+        engine = make_engine()
+        # 'สงห' exists only in the heavy fold, never in the light fold column.
+        # Searching the light column with a heavy form must not silently match
+        # via the base column instead.
+        rows = engine.connection.execute(
+            "SELECT COUNT(*) AS n FROM products_fts"
+            " WHERE name_fold_light MATCH ?",
+            ('"สงห"',),
+        ).fetchone()
+        assert rows["n"] == 0
+        rows = engine.connection.execute(
+            "SELECT COUNT(*) AS n FROM products_fts WHERE name_norm MATCH ?",
+            ('"สงห"',),
+        ).fetchone()
+        assert rows["n"] == 0
+
     def test_blank_query_is_reported_as_none(self):
         engine = make_engine()
         result = engine.search("   ")
@@ -2890,8 +2963,8 @@ import json
 import sqlite3
 from typing import Any
 
-from ..textnorm import digits_only
-from .detect import BARCODE, BOTH, CUSTOMER, NONE, detect
+from ..textnorm import digits_only, fold_light
+from .detect import BARCODE, BOTH, CUSTOMER, MIN_TRIGRAM, NONE, detect
 from .filters import Filters, order_filter_sql
 from .fuzzy import best_customers, best_products
 
@@ -3048,14 +3121,25 @@ class SearchEngine:
         if detection.too_short:
             return self._product_ids_by_prefix(detection.normalized_query)
 
-        found = self._product_ids_by_fts(detection.normalized_query)
+        # Layer 3: the base form against the base column.
+        found = self._product_ids_by_fts(detection.normalized_query, "name_norm")
         if len(found) >= FUZZY_FALLBACK_THRESHOLD:
             return found
-        widened = self._product_ids_by_fts(detection.normalized_query, fold=True)
-        if len(widened) >= len(found):
-            found = widened
+
+        # Layer 3b: widen by matching the light-folded query against the
+        # light-folded column. The query MUST be transformed by the same
+        # function that built the column. Passing the raw or norm()'d query
+        # here silently returns nothing, because a mark-carrying query is not
+        # a substring of a tone-stripped column. Verified: norm('สิงห์') at
+        # name_fold_light gives 0 rows, fold_light('สิงห์') gives 1.
+        light_query = fold_light(detection.normalized_query)
+        for product_id in self._product_ids_by_fts(light_query, "name_fold_light"):
+            if product_id not in found:
+                found.append(product_id)
         if len(found) >= FUZZY_FALLBACK_THRESHOLD:
             return found
+
+        # Layer 4: fuzzy, only when both exact paths found too little.
         for product_id, _text, _score in best_products(
             detection.normalized_query, self.connection
         ):
@@ -3101,15 +3185,32 @@ class SearchEngine:
         ).fetchall()
         return [row["id"] for row in rows]
 
-    def _product_ids_by_fts(self, normalized: str, fold: bool = False) -> list[int]:
-        if len(normalized) < 3:
-            return self._product_ids_by_prefix(normalized)
-        column = "name_fold_light" if fold else "name_norm"
+    def _product_ids_by_fts(self, query: str, column: str) -> list[int]:
+        """Matches `query` against one FTS column.
+
+        The MATCH must be scoped to a single column: an unscoped
+        `products_fts MATCH ?` searches every indexed column, so a base-form
+        query could accidentally match the fold column or the reverse.
+
+        The caller must pass a query transformed by the same function that
+        built the column. `name_norm` pairs with `norm()`, `name_fold_light`
+        with `fold_light()`.
+
+        The length guard is per call, not shared: light-folding can shorten a
+        query, so a base query of exactly 3 characters can become a 2-character
+        light query, which the trigram tokenizer cannot match. Only the base
+        column falls back to a prefix scan; a too-short fold query simply
+        contributes nothing and lets layer 4 do the work.
+        """
+        if len(query) < MIN_TRIGRAM:
+            if column == "name_norm":
+                return self._product_ids_by_prefix(query)
+            return []
         try:
             rows = self.connection.execute(
                 f"SELECT product_id FROM products_fts"
-                f" WHERE products_fts MATCH ? ORDER BY product_id",
-                (_phrase(normalized),),
+                f" WHERE {column} MATCH ? ORDER BY product_id",
+                (_phrase(query),),
             ).fetchall()
         except sqlite3.OperationalError:
             return []
@@ -4104,9 +4205,16 @@ Text is normalized into three columns at import time so queries stay cheap:
 
 | column | rule | example |
 |--------|------|---------|
-| `name_norm` | keep letters, digits and marks; drop spaces and punctuation | `น้ำดื่มสิงห์600มลx12` |
-| `name_fold_light` | drop tone marks, thanthakhat, nikhahit; keep vowels | `นาดมสงห600มลx12` |
-| `name_fold_heavy` | drop every non-spacing mark | `นาดมสงห600มลx12` |
+| `name_norm` | NFD; keep letters, digits and marks; drop spaces and punctuation | `น้ำดื่มสิงห์600มลx12` |
+| `name_fold_light` | as above, then drop tone marks, thanthakhat, nikhahit; **keep vowels** | `นำดืมสิงห600มลx12` |
+| `name_fold_heavy` | NFKD; keep letters, digits and spacing vowels; drop every non-spacing mark | `นาดมสงห600มลx12` |
+
+All three drop spaces and punctuation, so they are parallel views of the same
+text. A query is transformed by whichever function built the column it is being
+matched against: `norm()` for `name_norm`, `fold_light()` for
+`name_fold_light`. Pairing them up wrongly returns zero rows rather than
+raising, which is why `tests/test_engine_product.py` has a `TestFoldLayerPairing`
+class pinning it.
 
 ## Known limits
 
