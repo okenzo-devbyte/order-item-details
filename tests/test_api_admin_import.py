@@ -105,3 +105,24 @@ def test_corrupt_xlsx_is_422(client):
         headers=csrf(client),
     )
     assert response.status_code == 422
+
+
+def test_zip_without_workbook_is_422(client):
+    import io
+    import zipfile
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("hello.txt", "hi")
+    response = client.post(
+        "/api/v1/admin/import",
+        files={
+            "file": (
+                "fake.xlsx",
+                buffer.getvalue(),
+                "application/octet-stream",
+            )
+        },
+        headers=csrf(client),
+    )
+    assert response.status_code == 422

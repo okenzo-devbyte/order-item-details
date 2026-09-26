@@ -122,7 +122,13 @@ async def import_workbook(
     versions_dir.mkdir(parents=True, exist_ok=True)
     try:
         plaintext, report = build_snapshot_bytes(io.BytesIO(data))
-    except (BadZipFile, InvalidFileException, SourceFormatError):
+    except (
+        BadZipFile,
+        InvalidFileException,
+        SourceFormatError,
+        KeyError,
+        ValueError,
+    ):
         raise HTTPException(422, "workbook could not be read") from None
 
     sealed = snapshot.seal_bytes(plaintext)
