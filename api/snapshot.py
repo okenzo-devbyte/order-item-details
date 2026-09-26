@@ -64,6 +64,12 @@ class SnapshotStore:
         plaintext = crypto.open_sealed(Path(path).read_bytes(), self._keyring)
         self.replace_with_bytes(plaintext)
 
+    def seal_bytes(self, plaintext: bytes) -> bytes:
+        return crypto.seal(plaintext, self._keyring[self._key_id], self._key_id)
+
+    def load_version_bytes(self, path: str | Path) -> bytes:
+        return crypto.open_sealed(Path(path).read_bytes(), self._keyring)
+
     def _engine(self) -> SearchEngine:
         return SearchEngine(self.connection)
 
