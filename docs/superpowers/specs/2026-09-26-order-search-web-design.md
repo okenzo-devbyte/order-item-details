@@ -18,12 +18,13 @@ Plan 2 เพิ่ม: FastAPI + auth + audit + snapshot encryption + PWA + Doc
 | การทดสอบ | ผล | ผลต่อดีไซน์ |
 |----------|-----|-------------|
 | `sqlite3.Connection.serialize()` / `.deserialize()` | มีให้ใช้ (Python ≥ 3.11) | ใช้โหลด snapshot เข้า memory ได้ |
-| `deserialize()` แล้ว FTS5 `MATCH` | **คืน 0 ทุกคำ** — inverted index ไม่ถูกกู้คืน (แถวข้อมูลยังอยู่ครบ) | **ห้ามเชื่อ deserialize เฉย ๆ** |
-| หลัง deserialize แล้ว `INSERT INTO products_fts(products_fts) VALUES('rebuild')` | **คืนผลครบ** (`สิงห์`=1, `600มล`=1, `น้ำ`=1) | ต้อง rebuild FTS ทุกครั้งหลัง deserialize |
+| `deserialize()` บน snapshot ที่ commit แล้ว (ผ่าน `build_database`) | FTS5 index **อยู่รอด** — `MATCH` ใช้ได้ปกติ | `deserialize` เพียงพอสำหรับ snapshot ปกติ |
+| `deserialize()` เมื่อ FTS index shadow tables (`_data`/`_idx`/`_docsize`) เสียหาย/ไม่ครบ | `MATCH` โยน `sqlite3.DatabaseError` ("database disk image is malformed") | ต้องมีกลไกกู้คืน index |
+| หลัง deserialize แล้ว `INSERT INTO products_fts(products_fts) VALUES('rebuild')` | **กู้คืนผลครบ** (`สิงห์`=1, `600มล`=1, `น้ำ`=4) จาก `products_fts_content` | ต้อง rebuild FTS ทุกครั้งหลัง deserialize เพื่อความทนทาน |
 | `PRAGMA query_only=ON` | บล็อก write (`OperationalError`) · read และ FTS ปกติ | ใช้ล็อก snapshot เป็น read-only |
 | `products_fts` เป็น standalone FTS5 (ไม่ใช่ external-content) | `rebuild` ทำงานได้ | ดู `schema.sql:26-36` |
 
-> **นัยสำคัญ:** `deserialize()` เพียงลำพังทำให้ search คืน 0 แบบเงียบ ๆ โดยไม่มี error — เป็นบั๊กที่หาไม่เจอถ้าไม่ทดสอบ golden query หลังโหลด snapshot จึงต้องมีเทสต์บังคับในหัวข้อ 9
+> **นัยสำคัญ:** snapshot ที่สร้างผ่าน `build_database` (commit แล้ว) จะ serialize/deserialize FTS index ไปด้วย และ `MATCH` ใช้ได้ทันที — แต่ถ้า serialized index ไม่ครบหรือเสียหาย `MATCH` จะ**โยน error ไม่ใช่คืน 0 เงียบ ๆ** ดังนั้นต้องรัน `rebuild` ทุกครั้งหลัง deserialize เพื่อรับประกันว่า index ถูกสร้างใหม่จาก `products_fts_content` เสมอ ทดสอบด้วย `test_rebuild_recovers_a_damaged_fts_index` (สร้าง snapshot ที่ shadow tables เสียหาย แล้วยืนยันว่ายังค้นเจอ)
 
 ---
 

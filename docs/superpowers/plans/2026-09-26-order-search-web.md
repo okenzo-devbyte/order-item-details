@@ -10,7 +10,7 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-26-order-search-web-design.md`
 
-**Critical validated finding:** `sqlite3.Connection.deserialize()` alone loses the FTS5 index — `MATCH` returns 0 silently. Every loaded snapshot MUST run `INSERT INTO products_fts(products_fts) VALUES('rebuild')` before `PRAGMA query_only=ON`. Task 3 and its tests enforce this.
+**Validated finding (corrected after implementation):** A snapshot built through the real committed `build_database` pipeline serializes and deserializes its FTS5 index intact, so `MATCH` works without a rebuild. However, if the serialized index is incomplete or damaged, `MATCH` raises `sqlite3.DatabaseError` ("database disk image is malformed") rather than returning 0. Therefore every loaded snapshot still runs `INSERT INTO products_fts(products_fts) VALUES('rebuild')` before `PRAGMA query_only=ON`, which reconstructs the index from `products_fts_content`. Task 4's `test_rebuild_recovers_a_damaged_fts_index` proves this recovery. (An earlier probe claiming deserialize silently loses the index was an artifact of testing an uncommitted transaction.)
 
 ---
 
