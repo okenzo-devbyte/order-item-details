@@ -132,3 +132,15 @@ class TestSchema:
                 " :name_fold_heavy)",
                 values,
             )
+
+    def test_normalized_columns_have_no_defaults(self):
+        # An explicit NULL is rejected even when a DEFAULT is present, so the
+        # test above alone would not catch someone re-adding DEFAULT ''.
+        # Omitting the columns is the case that distinguishes bare NOT NULL
+        # from NOT NULL DEFAULT '': the latter would silently store ''.
+        connection = fresh_connection()
+        apply_schema(connection)
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                "INSERT INTO products (id, name) VALUES (1, 'a')"
+            )
