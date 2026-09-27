@@ -1,8 +1,13 @@
+import base64
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
+
+from api.snapshot import SnapshotStore
+
+from conftest import DATA_FILE
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_FILE = ROOT / "sample_order_data_1000_records.xlsx"
@@ -131,3 +136,52 @@ class TestQueryScript:
         )
         payload = json.loads(result.stdout)
         assert len(payload["suggestions"]) == 4
+
+
+RAW_KEY = bytes(range(32))
+KEY = base64.urlsafe_b64encode(RAW_KEY).decode("ascii")
+
+
+def run_script(script, args, env_extra=None):
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["DATA_KEY"] = KEY
+    env["DATA_KEY_ID"] = "v1"
+    if env_extra:
+        env.update(env_extra)
+    return subprocess.run(
+        [str(PYTHON), str(ROOT / "scripts" / script)] + args,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=ROOT,
+        env=env,
+    )
+
+
+def test_build_snapshot_produces_a_searchable_file(tmp_path):
+    out = tmp_path / "snapshot.enc"
+    result = run_script(
+        "build_snapshot.py", [str(DATA_FILE), "--out", str(out)]
+    )
+    assert result.returncode == 0, result.stderr
+    assert "products" in result.stdout
+    store = SnapshotStore({"v1": RAW_KEY}, "v1")
+    store.load_file(out)
+    assert len(store.search("น้ำ")["products"]) == 4
+
+
+def test_make_admin_creates_a_login(tmp_path):
+    db_path = tmp_path / "app.db"
+    result = run_script(
+        "make_admin.py",
+        ["--db", str(db_path), "--username", "boss", "--password", "password123"],
+    )
+    assert result.returncode == 0, result.stderr
+    from api.app_db import AppDB
+    from api.users import authenticate
+
+    db = AppDB(db_path)
+    assert authenticate(db, "boss", "password123")["role"] == "admin"
+    db.close()
