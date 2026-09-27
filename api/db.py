@@ -108,9 +108,12 @@ def _rename_schemas(sql: str, renames: dict[str, str]) -> str:
     prefix of `item_remark` and of `order_items`, and renaming those would
     produce a migration that fails to run.
 
-    This cannot tell SQL from a string literal, so a default name inside one is
-    rewritten too. A new migration must not mention a default schema name in
-    text.
+    A default schema name in a data position is rewritten, and that is the case
+    to watch for. A `CHECK` listing `'item'`, or an `INSERT` of `'sales'`, comes
+    back as `'"t_item"'` and `'"t_sales"'`: the statement still runs, still
+    succeeds, and now means something else, so the change is silent. A default
+    schema name inside a comment is harmless, in a data position it is not. Rule
+    for a new migration: never write a default schema name as data.
     """
     for original, replacement in renames.items():
         pattern = rf"\b{re.escape(original)}\b"

@@ -103,6 +103,28 @@ def test_rename_schemas_rewrites_inside_a_string_literal():
     )
 
 
+def test_rename_schemas_rewrites_a_constraint_value():
+    # The harmful case, not the cosmetic one. A default schema name in a data
+    # position is rewritten, and the statement still runs, still succeeds, and
+    # now means something else: the row that used to say `item` says `"t_item"`.
+    # A CHECK on the free-text `order_type` is the realistic way in.
+    sql = (
+        "CREATE TABLE sales.orders_v1 (order_type text"
+        " CHECK (order_type IN ('item','service')));\n"
+    )
+    assert _rename_schemas(sql, TEST_RENAMES) == (
+        "CREATE TABLE \"t_sales\".orders_v1 (order_type text"
+        " CHECK (order_type IN ('\"t_item\"','service')));\n"
+    )
+
+
+def test_rename_schemas_rewrites_an_inserted_literal():
+    sql = "INSERT INTO sales.orders_v1 (order_type) VALUES ('sales');\n"
+    assert _rename_schemas(sql, TEST_RENAMES) == (
+        "INSERT INTO \"t_sales\".orders_v1 (order_type) VALUES ('\"t_sales\"');\n"
+    )
+
+
 def test_every_migration_file_renames_onto_the_test_schemas():
     # The files on disk name their schemas bare, so a rename that looked for
     # quoted names would quietly match nothing and migrate() would create the

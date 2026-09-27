@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol, Sequence, runtime_checkable
@@ -19,6 +19,17 @@ class Reader(Protocol):
         ...
 
 
+def _qualified(schema: str, name: str) -> str:
+    """Qualifies a relation name, quoting both halves.
+
+    This quotes and does not escape, so a `"` in the schema name would close the
+    identifier. What keeps that out is `SQL_IDENTIFIER` in `api/config.py`,
+    which rejects the name before it can reach a query. Both halves go through
+    here so there is one place where a relation name is built.
+    """
+    return f'"{schema}"."{name}"'
+
+
 @dataclass(frozen=True)
 class Tables:
     """Schema-qualified relation names, resolved once per process.
@@ -37,13 +48,18 @@ class Tables:
     @classmethod
     def from_schemas(cls, item: str, sales: str) -> "Tables":
         return cls(
-            products=f'"{item}"."products"',
-            product_barcodes=f'"{item}"."product_barcodes"',
-            customers=f'"{sales}"."customers"',
-            orders=f'"{sales}"."orders"',
-            order_items=f'"{sales}"."order_items"',
+            products=_qualified(item, "products"),
+            product_barcodes=_qualified(item, "product_barcodes"),
+            customers=_qualified(sales, "customers"),
+            orders=_qualified(sales, "orders"),
+            order_items=_qualified(sales, "order_items"),
         )
 
 
 def app_table(schema: str, name: str) -> str:
-    return f'"{schema}"."{name}"'
+    """The same qualification for a table the search core does not own.
+
+    The app schemas hold users and the audit log, which no search query reads,
+    so they are named one call at a time rather than held on `Tables`.
+    """
+    return _qualified(schema, name)
