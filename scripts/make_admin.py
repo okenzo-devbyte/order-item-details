@@ -8,29 +8,39 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
-from api.app_db import AppDB
-from api.users import create_user, get_by_username, update_user
+from api.config import Settings
+from api.db import Database
+from api.users import bootstrap_admin, create_user, get_by_username, update_user
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Create or reset an admin account in app.db."
+        description="Create or reset an admin account in Postgres."
     )
-    parser.add_argument("--db", required=True, help="path to app.db")
     parser.add_argument("--username", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument("--role", default="admin", choices=("staff", "admin"))
     args = parser.parse_args()
 
-    db = AppDB(Path(args.db))
+    settings = Settings()
+    if not settings.database_url:
+        print("DATABASE_URL is required", file=sys.stderr)
+        return 2
+
+    database = Database(
+        settings.database_url,
+        settings.schema_item,
+        settings.schema_sales,
+        settings.schema_app,
+    )
     try:
-        existing = get_by_username(db, args.username)
+        existing = get_by_username(database, args.username)
         if existing is None:
-            create_user(db, args.username, args.password, args.role)
+            create_user(database, args.username, args.password, args.role)
             print(f"created {args.role} {args.username}")
         else:
             update_user(
-                db,
+                database,
                 existing["id"],
                 password=args.password,
                 role=args.role,
@@ -38,7 +48,7 @@ def main() -> int:
             )
             print(f"updated {args.role} {args.username}")
     finally:
-        db.close()
+        database.close()
     return 0
 
 

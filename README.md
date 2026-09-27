@@ -1,16 +1,6 @@
----
-title: Order Search
-emoji: 🔎
-colorFrom: indigo
-colorTo: gray
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # Order Search
 
-Imports the order workbook into a normalized SQLite snapshot and answers two
+Imports the order workbook into a normalized Postgres dataset and answers two
 questions fast, in Thai, on a phone or a terminal:
 
 - what has this customer bought before?
@@ -21,30 +11,41 @@ questions fast, in Thai, on a phone or a terminal:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+$env:DATABASE_URL = "<your Supabase transaction pooler url>"
 ```
 
-## Import the data
+`DATABASE_URL` must be the Supabase transaction pooler on port **6543**
+(`aws-1-ap-southeast-1.pooler.supabase.com`), not the direct connection, which
+is IPv6-only. Append `?sslmode=require` to the URL.
+
+## Load the data
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\import_excel.py sample_order_data_1000_records.xlsx --out build\snapshot.db
+.\.venv\Scripts\python.exe scripts\load_postgres.py sample_order_data_1000_records.xlsx
 ```
 
 The report must show `products : 15`, `customers : 20`, `barcodes : 127`.
+Each run writes a new `{table}_v{n}` set and repoints the views, so the
+previous version stays available.
 
-## Query
+## Run locally
 
 ```powershell
-# by customer name
-.\.venv\Scripts\python.exe scripts\query_cli.py --db build\snapshot.db "สุรชัย"
+$env:PYTHONPATH = "src"
+$env:SECRET_KEY = "dev-secret-change-me-please-32-bytes"
+$env:ADMIN_USERNAME = "admin"
+$env:ADMIN_PASSWORD = "change-me-now"
+.\.venv\Scripts\python.exe -m uvicorn api.main:app --reload
+```
 
-# by barcode
-.\.venv\Scripts\python.exe scripts\query_cli.py --db build\snapshot.db "8850250001234"
+Open `http://127.0.0.1:8000`, log in, search. The API lives under `/api/v1`
+and `GET /healthz` reports the product/customer/order counts the service is
+serving.
 
-# product text, with filters
-.\.venv\Scripts\python.exe scripts\query_cli.py --db build\snapshot.db --store 101 --order-type Pickup "น้ำดื่มสิงห์ 600 มล. x 12"
+### Provision another admin
 
-# autocomplete suggestions
-.\.venv\Scripts\python.exe scripts\query_cli.py --db build\snapshot.db --suggest "น้ำ"
+```powershell
+.\.venv\Scripts\python.exe scripts\make_admin.py --username boss --password password123
 ```
 
 ## Tests
@@ -58,10 +59,10 @@ The report must show `products : 15`, `customers : 20`, `barcodes : 127`.
 Queries go through four layers, cheapest first:
 
 1. **Barcode** — digits only, index lookup.
-2. **Customer name** — exact match, then `WRatio` fuzzy over 20 names.
-3. **Product text** — SQLite FTS5 with the `trigram` tokenizer, which is the
-   only built-in tokenizer that can match inside Thai text. The default
-   `unicode61` tokenizer returns nothing for a query like `สิงห์`.
+2. **Customer name** — exact match, then `WRatio` fuzzy over the customer list.
+3. **Product text** — a `pg_trgm` substring match over the normalised product
+   columns. `LIKE '%query%'` is indexed by a GIN trigram index and works inside
+   Thai text without a tokenizer.
 4. **Fuzzy products** — only when layer 3 found fewer than five results. A cheap
    pass over the tone-mark-stripped form widens the pool, then every candidate is
    confirmed against the untouched form, because stripping marks can merge
@@ -90,111 +91,9 @@ matched against.
 - `Original Expected Date` is a delivery window, not an order date, and the
   sample file uses a single date for every row.
 
-## Web service
-
-The API and PWA put the same search core behind HTTP.
-
-### Build the encrypted snapshot
-
-```powershell
-$env:DATA_KEY = .\.venv\Scripts\python.exe -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
-New-Item -ItemType Directory -Force build | Out-Null
-Set-Content -Path build\data_key.txt -Value $env:DATA_KEY -NoNewline
-.\.venv\Scripts\python.exe scripts\build_snapshot.py sample_order_data_1000_records.xlsx --out snapshot.enc
-```
-
-Keep `DATA_KEY` secret. `snapshot.enc` is ciphertext and may be committed.
-
-### Run locally
-
-```powershell
-$env:PYTHONPATH = "src"
-$env:DATA_KEY = Get-Content build\data_key.txt
-$env:SECRET_KEY = "dev-secret-change-me-please-32-bytes"
-$env:ADMIN_USERNAME = "admin"
-$env:ADMIN_PASSWORD = "change-me-now"
-.\.venv\Scripts\python.exe -m uvicorn api.main:app --reload
-```
-
-Open `http://127.0.0.1:8000`, log in, search. The API lives under `/api/v1`
-and `GET /healthz` reports whether the snapshot loaded.
-
-### Provision another admin
-
-```powershell
-.\.venv\Scripts\python.exe scripts\make_admin.py --db "$env:TEMP\order-search\app.db" --username boss --password password123
-```
-
-### Deploy to Render
-
-Push the repository, create the service from `render.yaml`, then set `DATA_KEY`
-(the value used to build `snapshot.enc`), `ADMIN_PASSWORD` and `SECRET_KEY` in
-the dashboard. Free instances have no persistent disk, so `users` and
-`audit_log` reset on redeploy; attach a disk and set `DISK_PATH` to keep them.
-
-#### Deploy without connecting a Git provider
-
-If the Render GitHub connection is unavailable, build the image elsewhere and
-let Render run it as a prebuilt image.
-
-1. Create a Docker Hub repository named `order-search`.
-2. Add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` as repository secrets, then
-   run the `Publish image` workflow. It builds the Dockerfile and pushes
-   `<username>/order-search:latest`.
-3. Create a Render API key and deploy:
-
-```powershell
-$env:RENDER_API_KEY = "<your render api key>"
-$env:REGISTRY_USERNAME = "<docker hub username>"
-$env:REGISTRY_TOKEN = "<docker hub access token>"
-$env:DATA_KEY = Get-Content build\data_key.txt
-$env:ADMIN_PASSWORD = "<your admin password>"
-.\.venv\Scripts\python.exe scripts\deploy_render.py --image "docker.io/<username>/order-search:latest"
-```
-
-The script creates the service, or updates it when one of that name already
-exists, and generates `SECRET_KEY` unless you supply one. The registry
-credential is created once and reused; drop `REGISTRY_USERNAME` and
-`REGISTRY_TOKEN` when the image is public. Add `--dry-run` to print the request
-body without calling the API.
-
-#### Deploy to a Hugging Face Space
-
-The image listens on `$PORT`, so the same repository deploys as a Docker Space.
-
-1. Create a private Space at <https://huggingface.co/new-space> and pick the
-   Docker SDK.
-2. Create a write token at <https://huggingface.co/settings/tokens>.
-3. Push this repository over the Space, then add secrets in
-   *Variables and secrets*:
-
-| name | kind |
-|------|------|
-| `DATA_KEY` | secret |
-| `SECRET_KEY` | secret |
-| `ADMIN_PASSWORD` | secret |
-| `COOKIE_SECURE` | variable, value `true` |
-
-```powershell
-git remote add hf https://huggingface.co/spaces/<user>/<space>
-git push hf main --force
-```
-
-Restart the Space after adding the secrets. A private Space needs a paid plan;
-a public one is free and exposes the app to anyone who knows the URL, so keep
-the admin password strong.
-
-### Security notes
+## Security notes
 
 - Search and suggest are `POST` so customer text never lands in a URL.
-- `snapshot.enc` is decrypted into memory only. The FTS index is rebuilt after
-  deserialization so a damaged index still answers queries.
 - Sessions use httpOnly access/refresh cookies with rotation; the CSRF token is
   read by the app and echoed in the `X-CSRF-Token` header.
 - The service worker caches the app shell only, never `/api/`.
-
-## Testing the web service
-
-```powershell
-.\.venv\Scripts\python.exe -m pytest
-```

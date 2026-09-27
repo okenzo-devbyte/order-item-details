@@ -2635,6 +2635,7 @@ git rm tests/test_container.py tests/test_deploy_render.py
 git rm tests/test_engine_product.py tests/test_engine_barcode.py
 git rm tests/test_engine_customer.py tests/test_date_filter.py tests/test_perf.py
 git rm tests/test_passwords.py tests/test_audit.py tests/test_security.py tests/test_scripts.py
+git rm tests/test_build.py tests/test_schema.py
 git rm tests/test_api_boot.py tests/test_api_auth.py tests/test_api_search.py
 git rm tests/test_api_admin.py tests/test_api_admin_audit.py tests/test_api_admin_import.py
 git rm tests/test_pwa.py
