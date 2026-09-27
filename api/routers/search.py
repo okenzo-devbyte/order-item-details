@@ -52,6 +52,15 @@ def suggest(
     suggestions = request.app.state.snapshot.suggest(
         payload.q, limit=payload.limit
     )
+    audit.record(
+        get_app_db(request),
+        action="suggest",
+        user_id=user["id"],
+        query=payload.q,
+        result_count=len(suggestions),
+        ip=client_ip(request),
+        user_agent=user_agent(request),
+    )
     return {"suggestions": suggestions}
 
 

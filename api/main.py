@@ -6,6 +6,7 @@ import sqlite3
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -48,7 +49,6 @@ async def lifespan(app: FastAPI):
 
     keyring = {settings.data_key_id: crypto.load_key(settings.data_key)}
     snapshot = SnapshotStore(keyring, settings.data_key_id)
-    snapshot.load_file(settings.snapshot_file)
     app.state.snapshot = snapshot
 
     db = AppDB(settings.app_db_path)
@@ -56,6 +56,10 @@ async def lifespan(app: FastAPI):
     app.state.rate_limiter = RateLimiter(settings.rate_limit_per_minute)
     if bootstrap_admin(db, settings.admin_username, settings.admin_password):
         logger.info("bootstrap admin account created")
+        if settings.admin_password == "change-me-now":
+            logger.warning(
+                "bootstrap admin uses the default password; change it before use"
+            )
     if db.query_one("SELECT COUNT(*) AS n FROM import_versions")["n"] == 0:
         sealed = Path(settings.snapshot_file).read_bytes()
         db.run(
@@ -68,6 +72,17 @@ async def lifespan(app: FastAPI):
                 datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             ),
         )
+
+    load_path = settings.snapshot_file
+    if settings.persistent:
+        row = db.query_one(
+            "SELECT path FROM import_versions WHERE is_current = 1"
+            " ORDER BY id DESC LIMIT 1"
+        )
+        if row is not None and Path(row["path"]).is_file():
+            load_path = Path(row["path"])
+    snapshot.load_file(load_path)
+
     try:
         yield
     finally:
@@ -119,10 +134,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def csrf_origin(request: Request, call_next):
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             origin = request.headers.get("origin")
-            if origin is not None and request.url.hostname not in origin:
-                return JSONResponse(
-                    {"detail": "cross-origin request blocked"}, status_code=403
-                )
+            if origin is not None:
+                origin_host = urlsplit(origin).hostname
+                if origin_host is not None and origin_host != request.url.hostname:
+                    return JSONResponse(
+                        {"detail": "cross-origin request blocked"},
+                        status_code=403,
+                    )
         return await call_next(request)
 
     @app.get("/healthz")

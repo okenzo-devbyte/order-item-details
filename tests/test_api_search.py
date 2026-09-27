@@ -42,6 +42,8 @@ def test_short_thai_query_returns_four_products(client):
 
 def test_pii_never_appears_in_the_url(client):
     response = client.post("/api/v1/search", json={"q": "สุรชัย"})
+    assert response.request.method == "POST"
+    assert not response.request.url.query
     assert "สุรชัย" not in str(response.request.url)
 
 
@@ -127,3 +129,11 @@ def test_product_customers_endpoint(client):
 
 def test_product_customers_unknown_id_is_404(client):
     assert client.get("/api/v1/products/99999/customers").status_code == 404
+
+
+def test_suggest_is_audited(client):
+    client.post("/api/v1/suggest", json={"q": "น้ำ"})
+    entries = client.get(
+        "/api/v1/admin/audit", params={"action": "suggest"}
+    ).json()["entries"]
+    assert entries

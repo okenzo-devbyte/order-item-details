@@ -88,6 +88,8 @@ The API and PWA put the same search core behind HTTP.
 
 ```powershell
 $env:DATA_KEY = .\.venv\Scripts\python.exe -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+New-Item -ItemType Directory -Force build | Out-Null
+Set-Content -Path build\data_key.txt -Value $env:DATA_KEY -NoNewline
 .\.venv\Scripts\python.exe scripts\build_snapshot.py sample_order_data_1000_records.xlsx --out snapshot.enc
 ```
 

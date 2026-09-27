@@ -39,6 +39,7 @@ def test_audit_pagination(client):
         "/api/v1/admin/audit",
         params={"limit": 10, "before_id": first["entries"][0]["id"]},
     ).json()
+    assert older["entries"]
     assert all(
         entry["id"] < first["entries"][0]["id"] for entry in older["entries"]
     )

@@ -45,6 +45,7 @@ def test_service_worker_never_caches_api(client):
     ]
     assert entries
     assert not any(entry.startswith("/api") for entry in entries)
+    assert 'url.pathname.startsWith("/api/")' in text
 
 
 def test_api_has_content_security_policy(client):
