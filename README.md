@@ -1,4 +1,14 @@
-# Order Search Core
+---
+title: Order Search
+emoji: 🔎
+colorFrom: indigo
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
+# Order Search
 
 Imports the order workbook into a normalized SQLite snapshot and answers two
 questions fast, in Thai, on a phone or a terminal:
@@ -147,6 +157,32 @@ exists, and generates `SECRET_KEY` unless you supply one. The registry
 credential is created once and reused; drop `REGISTRY_USERNAME` and
 `REGISTRY_TOKEN` when the image is public. Add `--dry-run` to print the request
 body without calling the API.
+
+#### Deploy to a Hugging Face Space
+
+The image listens on `$PORT`, so the same repository deploys as a Docker Space.
+
+1. Create a private Space at <https://huggingface.co/new-space> and pick the
+   Docker SDK.
+2. Create a write token at <https://huggingface.co/settings/tokens>.
+3. Push this repository over the Space, then add secrets in
+   *Variables and secrets*:
+
+| name | kind |
+|------|------|
+| `DATA_KEY` | secret |
+| `SECRET_KEY` | secret |
+| `ADMIN_PASSWORD` | secret |
+| `COOKIE_SECURE` | variable, value `true` |
+
+```powershell
+git remote add hf https://huggingface.co/spaces/<user>/<space>
+git push hf main --force
+```
+
+Restart the Space after adding the secrets. A private Space needs a paid plan;
+a public one is free and exposes the app to anyone who knows the URL, so keep
+the admin password strong.
 
 ### Security notes
 
