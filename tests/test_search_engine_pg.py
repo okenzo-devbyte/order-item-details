@@ -7,13 +7,16 @@ class RecordingReader:
         self._one = one
         self._all = all_rows or []
         self.seen = []
+        self.seen_params = []
 
     def one(self, sql, params=()):
         self.seen.append(sql)
+        self.seen_params.append(params)
         return self._one
 
     def all(self, sql, params=()):
         self.seen.append(sql)
+        self.seen_params.append(params)
         return self._all
 
 
@@ -31,6 +34,28 @@ def test_a_short_query_falls_back_to_a_prefix_scan():
     reader = RecordingReader(one=None, all_rows=[])
     make(reader).search("น้ำ")
     assert any("LIKE %s" in sql and "ESCAPE" in sql for sql in reader.seen)
+
+
+def test_the_trigram_query_passes_pattern_prefix_limit():
+    reader = RecordingReader(
+        one=None, all_rows=[{"id": 3}, {"id": 4}]
+    )
+    engine = make(reader)
+    found = engine._product_ids_by_trigram("น้ำดื่ม", "name_norm", limit=50)
+    trigram_sql = reader.seen[-1]
+    trigram_params = reader.seen_params[-1]
+    assert found == [3, 4]
+    assert "LIKE %s ESCAPE" in trigram_sql
+    assert "LIMIT %s" in trigram_sql
+    assert trigram_params == ("%น้ำดื่ม%", "น้ำดื่ม%", 50)
+
+
+def test_the_trigram_query_prefers_prefix_matches_first():
+    reader = RecordingReader(
+        one=None, all_rows=[{"id": 9}, {"id": 1}, {"id": 5}]
+    )
+    engine = make(reader)
+    assert engine._product_ids_by_trigram("น้ำ", "name_norm") == [9, 1, 5]
 
 
 def test_cursor_survives_a_round_trip():

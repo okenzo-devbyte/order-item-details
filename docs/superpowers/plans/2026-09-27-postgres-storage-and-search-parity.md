@@ -1519,6 +1519,13 @@ git add src/order_search/search/engine.py tests/test_search_engine_pg.py
 git commit -m "feat(search): match products by trigram substring instead of FTS5"
 ```
 
+Note: from this task until Task 13, five legacy SQLite engine tests are
+expected to fail: `tests/test_engine_product.py`,
+`tests/test_engine_barcode.py`, `tests/test_engine_customer.py`,
+`tests/test_date_filter.py` and `tests/test_perf.py`. They construct
+`SearchEngine(sqlite3.Connection)`, which this task removes. Their ground-truth
+coverage is superseded by the Task 8 parity gate, and Task 13 deletes them.
+
 ---
 
 ### Task 8: The parity gate
@@ -2572,6 +2579,11 @@ Only after the parity suite is green.
 - Delete: `tests/test_snapshot_store.py`
 - Delete: `tests/test_container.py`
 - Delete: `tests/test_deploy_render.py`
+- Delete: `tests/test_engine_product.py`
+- Delete: `tests/test_engine_barcode.py`
+- Delete: `tests/test_engine_customer.py`
+- Delete: `tests/test_date_filter.py`
+- Delete: `tests/test_perf.py`
 - Modify: `pyproject.toml`
 - Modify: `README.md`
 
@@ -2597,6 +2609,8 @@ git rm src/order_search/ingest/build.py
 git rm scripts/build_snapshot.py scripts/import_excel.py scripts/query_cli.py scripts/make_admin.py
 git rm tests/test_crypto.py tests/test_snapshot_store.py
 git rm tests/test_container.py tests/test_deploy_render.py
+git rm tests/test_engine_product.py tests/test_engine_barcode.py
+git rm tests/test_engine_customer.py tests/test_date_filter.py tests/test_perf.py
 ```
 
 Add a replacement admin CLI so operators are not locked out of the only path

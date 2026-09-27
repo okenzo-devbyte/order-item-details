@@ -71,7 +71,7 @@ def _escape_like(text: str) -> str:
     )
 
 
-def _iso_date(value):
+def _iso_date(value) -> str | None:
     return value.isoformat() if value is not None else None
 
 
@@ -271,6 +271,20 @@ class SearchEngine:
     def _product_ids_by_trigram(
         self, query: str, column: str, limit: int = 200
     ) -> list[int]:
+        """Matches `query` as a substring of one normalised product column.
+
+        pg_trgm indexes `LIKE '%x%'` but only for patterns of at least three
+        consecutive characters, so a shorter query falls back to a prefix scan
+        on the base column and contributes nothing on the folded column, where
+        folding can shorten an already short query further.
+
+        The pairing is load-bearing: `name_norm` pairs with `norm()` and
+        `name_fold_light` with `fold_light()`.
+
+        The ordering puts prefix matches first. Without a relevance score to
+        sort by, an unordered LIMIT would let the cutoff drop the very rows a
+        user typed most of.
+        """
         if len(query) < MIN_TRIGRAM:
             if column == "name_norm":
                 return self._product_ids_by_prefix(query)
