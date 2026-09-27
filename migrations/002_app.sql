@@ -50,8 +50,8 @@ CREATE TABLE IF NOT EXISTS app.audit_log (
 CREATE INDEX IF NOT EXISTS idx_audit_created ON app.audit_log(created_at);
 
 CREATE TABLE IF NOT EXISTS app.rate_buckets (
-    key        text NOT NULL,
-    window     timestamptz NOT NULL,
-    hits       integer NOT NULL DEFAULT 0,
-    PRIMARY KEY (key, window)
+    key          text NOT NULL,
+    window_start timestamptz NOT NULL,
+    hits         integer NOT NULL DEFAULT 0,
+    PRIMARY KEY (key, window_start)
 );

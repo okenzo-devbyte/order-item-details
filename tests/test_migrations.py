@@ -79,9 +79,27 @@ def test_every_migration_file_renames_onto_the_test_schemas():
         path.name: _rename_schemas(path.read_text(encoding="utf-8"), TEST_RENAMES)
         for path in sorted(MIGRATIONS_DIR.glob("*.sql"))
     }
-    assert len(renamed_files) == 6
-    combined = "\n".join(renamed_files.values())
-    for default in ("app", "item", "sales"):
-        assert not re.search(rf"\b{default}\b", combined), default
+    assert renamed_files
+    for name, renamed in renamed_files.items():
+        for default in ("app", "item", "sales"):
+            assert not re.search(rf"\b{default}\b", renamed), f"{name}: {default}"
     for configured in ("t_app", "t_item", "t_sales"):
-        assert re.search(rf"\b{configured}\b", combined), configured
+        matches = [n for n, s in renamed_files.items() if re.search(rf"\b{configured}\b", s)]
+        assert matches, f"no migration creates {configured}"
+
+
+def test_no_migration_names_a_column_after_a_reserved_word():
+    # PostgreSQL only accepts IDENT, unreserved or col_name keywords as a
+    # column name, so `window` is a syntax error and stops the whole file.
+    # `key`, `role` and `version` are unreserved and are fine as they are.
+    reserved = ["window", "order", "group", "user", "table", "select"]
+    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        sql = path.read_text(encoding="utf-8")
+        for word in reserved:
+            assert not re.search(rf"\b{word}\b\s+\w", sql), f"{path.name}: {word}"
+
+
+def test_the_rate_limit_bucket_uses_a_usable_column_name():
+    sql = (MIGRATIONS_DIR / "002_app.sql").read_text(encoding="utf-8")
+    assert "window_start" in sql
+    assert "PRIMARY KEY (key, window_start)" in sql

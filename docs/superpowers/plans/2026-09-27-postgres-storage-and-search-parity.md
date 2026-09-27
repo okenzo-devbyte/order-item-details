@@ -278,9 +278,9 @@ CREATE INDEX IF NOT EXISTS idx_audit_created ON app.audit_log(created_at);
 
 CREATE TABLE IF NOT EXISTS app.rate_buckets (
     key        text NOT NULL,
-    window     timestamptz NOT NULL,
+    window_start timestamptz NOT NULL,
     hits       integer NOT NULL DEFAULT 0,
-    PRIMARY KEY (key, window)
+    PRIMARY KEY (key, window_start)
 );
 ```
 
@@ -2357,8 +2357,8 @@ class RateLimiter:
         window = moment.replace(second=0, microsecond=0)
         table = f'"{self.db.schema_app}"."rate_buckets"'
         row = self.db.one(
-            f"INSERT INTO {table} (key, window, hits) VALUES (%s, %s, 1)"
-            " ON CONFLICT (key, window) DO UPDATE"
+            f"INSERT INTO {table} (key, window_start, hits) VALUES (%s, %s, 1)"
+            " ON CONFLICT (key, window_start) DO UPDATE"
             " SET hits = rate_buckets.hits + 1"
             " RETURNING hits",
             (key, window),
