@@ -103,3 +103,21 @@ def test_the_rate_limit_bucket_uses_a_usable_column_name():
     sql = (MIGRATIONS_DIR / "002_app.sql").read_text(encoding="utf-8")
     assert "window_start" in sql
     assert "PRIMARY KEY (key, window_start)" in sql
+
+
+def test_the_trigram_extension_is_pinned_to_a_schema():
+    # Without an explicit schema the extension lands in the first writable
+    # schema in search_path, and `gin_trgm_ops` then resolves through
+    # search_path too. The moment anything pins search_path to the three data
+    # schemas, the operator classes stop resolving and 003 fails to run.
+    sql = (MIGRATIONS_DIR / "001_extensions.sql").read_text(encoding="utf-8")
+    assert "CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;" in sql
+
+
+def test_the_current_version_index_is_partial_and_unique():
+    # A unique index on a boolean where the predicate is `is_current` is how
+    # "at most one current version" is written: every indexed row has the key
+    # `true`, so the second one collides. See the comment in the migration.
+    sql = (MIGRATIONS_DIR / "002_app.sql").read_text(encoding="utf-8")
+    assert "CREATE UNIQUE INDEX IF NOT EXISTS idx_versions_current" in sql
+    assert "ON app.data_versions(is_current) WHERE is_current;" in sql

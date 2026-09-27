@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS app.data_versions (
     created_at     timestamptz NOT NULL DEFAULT now(),
     created_by     bigint REFERENCES app.users(id)
 );
+-- Unique on a boolean is not a mistake. The predicate keeps the row where
+-- is_current is true, so the index holds every current version with the key
+-- `true` and the second one collides: at most one current version.
+-- IF NOT EXISTS keeps an index that already exists under this name even if its
+-- definition differs, so a changed definition here needs an explicit DROP.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_versions_current
     ON app.data_versions(is_current) WHERE is_current;
 
