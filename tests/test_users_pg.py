@@ -36,3 +36,9 @@ def test_deactivating_a_user_blocks_login(users_db):
     user_id = create_user(users_db, "staff1", "password123", "staff")
     update_user(users_db, user_id, is_active=False)
     assert authenticate(users_db, "staff1", "password123") is None
+
+
+def test_a_duplicate_username_fails_loudly(users_db):
+    create_user(users_db, "boss", "password123", "admin")
+    with pytest.raises(Exception):
+        create_user(users_db, "boss", "password456", "staff")

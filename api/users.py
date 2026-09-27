@@ -22,15 +22,13 @@ def get_by_id(db, user_id: int):
 def create_user(db, username: str, password: str, role: str) -> int:
     if role not in ROLES:
         raise ValueError(f"role must be one of {ROLES}")
-    db.run(
+    row = db.one(
         f"INSERT INTO {_users(db.schema_app)}"
         " (username, password_hash, role, is_active, created_at)"
-        " VALUES (%s,%s,%s,true,now())",
+        " VALUES (%s,%s,%s,true,now()) RETURNING id",
         (username, hash_password(password), role),
     )
-    return db.one(
-        f"SELECT id FROM {_users(db.schema_app)} WHERE username = %s", (username,)
-    )["id"]
+    return row["id"]
 
 
 def authenticate(db, username: str, password: str):

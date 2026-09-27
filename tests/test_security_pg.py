@@ -41,3 +41,19 @@ def test_revoking_everything_blocks_the_user(session_db):
             db, "test-secret", refresh, security.timedelta(minutes=15),
             security.timedelta(days=7), security.timedelta(minutes=30),
         )
+
+
+def test_a_rotation_refreshes_the_idle_window(session_db):
+    db, _user_id = session_db
+    _access, refresh = issue(db)
+    _access2, _refresh2 = security.rotate_refresh(
+        db, "test-secret", refresh, security.timedelta(minutes=15),
+        security.timedelta(days=7), security.timedelta(minutes=30),
+    )
+    old_jti = security.decode_token("test-secret", refresh, security.REFRESH)["jti"]
+    row = db.one(
+        'SELECT last_used_at, revoked FROM "t_app"."refresh_tokens" WHERE id = %s',
+        (old_jti,),
+    )
+    assert row["revoked"] is True
+    assert row["last_used_at"] is not None

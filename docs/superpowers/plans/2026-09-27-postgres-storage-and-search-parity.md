@@ -1820,7 +1820,7 @@ from api.users import authenticate, bootstrap_admin, create_user, list_users, up
 @pytest.fixture
 def users_db(client_db):
     yield client_db
-    client_db.run('TRUNCATE "app"."users" CASCADE')
+    client_db.run(f'TRUNCATE "{client_db.schema_app}"."users" CASCADE')
 
 
 def test_create_and_authenticate(users_db):
@@ -1864,7 +1864,7 @@ from api import security, users
 def session_db(client_db):
     create = users.create_user(client_db, "boss", "password123", "admin")
     yield client_db, create
-    client_db.run('TRUNCATE "app"."users" CASCADE')
+    client_db.run(f'TRUNCATE "{client_db.schema_app}"."users" CASCADE')
 
 
 def issue(db):

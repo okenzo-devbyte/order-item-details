@@ -88,7 +88,7 @@ def rotate_refresh(
     if row is None:
         raise InvalidToken("refresh token unknown")
     claimed = db.one(
-        f"UPDATE {_tokens(db.schema_app)} SET revoked = true"
+        f"UPDATE {_tokens(db.schema_app)} SET revoked = true, last_used_at = now()"
         " WHERE id = %s AND revoked = false RETURNING id",
         (jti,),
     )
