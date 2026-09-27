@@ -154,10 +154,13 @@ def main() -> int:
         )
         if not value
     ]
+    if not args.dry_run and not os.environ.get("RENDER_API_KEY"):
+        missing.append("RENDER_API_KEY")
     if missing:
         print(
             f"missing required value: {', '.join(missing)} "
-            "(pass as a flag or set the env var)",
+            "(pass as a flag or set the env var; quote every secret, "
+            "for example $env:REGISTRY_TOKEN = \"...\")",
             file=sys.stderr,
         )
         return 2

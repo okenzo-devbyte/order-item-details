@@ -54,6 +54,7 @@ def test_half_a_registry_credential_is_refused():
     env.pop("RENDER_API_KEY", None)
     env["DATA_KEY"] = KEY
     env["ADMIN_PASSWORD"] = "a-long-admin-password"
+    env["RENDER_API_KEY"] = "rnd_not_a_real_key"
     env["REGISTRY_USERNAME"] = "ohkenzo"
     env.pop("REGISTRY_TOKEN", None)
     result = subprocess.run(
@@ -98,6 +99,32 @@ def test_dry_run_emits_valid_json_without_a_key(tmp_path):
     payload = json.loads(result.stdout)
     names = {item["key"] for item in payload["serviceDetails"]["env"]}
     assert {"DATA_KEY", "ADMIN_PASSWORD", "SECRET_KEY", "COOKIE_SECURE"} <= names
+
+
+def test_names_every_missing_secret():
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
+    env["PYTHONIOENCODING"] = "utf-8"
+    for name in ("DATA_KEY", "ADMIN_PASSWORD", "RENDER_API_KEY"):
+        env.pop(name, None)
+    result = subprocess.run(
+        [
+            str(PYTHON),
+            str(ROOT / "scripts" / "deploy_render.py"),
+            "--image",
+            "docker.io/me/order-search:latest",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=ROOT,
+        env=env,
+    )
+    assert result.returncode == 2
+    assert "DATA_KEY" in result.stderr
+    assert "ADMIN_PASSWORD" in result.stderr
+    assert "RENDER_API_KEY" in result.stderr
+    assert "quote every secret" in result.stderr
 
 
 def test_refuses_to_run_without_a_data_key(tmp_path):
