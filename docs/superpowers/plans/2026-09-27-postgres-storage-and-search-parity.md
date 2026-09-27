@@ -2083,6 +2083,18 @@ git add api/users.py api/audit.py api/security.py tests/test_users_pg.py tests/t
 git commit -m "feat(auth): store users, sessions and the audit log in Postgres"
 ```
 
+Note: deleting `api/app_db.py` makes `api/main.py` and `scripts/make_admin.py`
+fail to import until Task 10 rewrites the lifespan and Task 13 retires the
+legacy scripts. Five legacy test files reference `AppDB` and are expected to be
+broken from this task until Task 13 deletes them: `tests/test_passwords.py`,
+`tests/test_audit.py`, `tests/test_security.py` and `tests/test_scripts.py`
+(plus the `test_api_*` files until Task 10 ports them). `api/db_helpers.py`
+must drop the `AppDB` import in the same commit so `api/security.py` still
+imports; `get_app_db` keeps its name until Task 10 renames it to `get_db`.
+
+The test fixtures truncate `"{client_db.schema_app}"."users"` — the test
+schema, never the production `"app"` schema.
+
 ---
 
 ### Task 10: Port the routers and the lifespan
@@ -2584,6 +2596,10 @@ Only after the parity suite is green.
 - Delete: `tests/test_engine_customer.py`
 - Delete: `tests/test_date_filter.py`
 - Delete: `tests/test_perf.py`
+- Delete: `tests/test_passwords.py`
+- Delete: `tests/test_audit.py`
+- Delete: `tests/test_security.py`
+- Delete: `tests/test_scripts.py`
 - Modify: `pyproject.toml`
 - Modify: `README.md`
 
@@ -2611,6 +2627,7 @@ git rm tests/test_crypto.py tests/test_snapshot_store.py
 git rm tests/test_container.py tests/test_deploy_render.py
 git rm tests/test_engine_product.py tests/test_engine_barcode.py
 git rm tests/test_engine_customer.py tests/test_date_filter.py tests/test_perf.py
+git rm tests/test_passwords.py tests/test_audit.py tests/test_security.py tests/test_scripts.py
 ```
 
 Add a replacement admin CLI so operators are not locked out of the only path
