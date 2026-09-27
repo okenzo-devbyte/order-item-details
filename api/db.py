@@ -25,37 +25,69 @@ CREATE TABLE IF NOT EXISTS "app"."schema_migrations" (
 """
 
 
+COMMENT = re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL)
+
+
+def _is_code(statement: str) -> bool:
+    return bool(COMMENT.sub("", statement).strip(" \t\r\n;"))
+
+
 def split_statements(sql: str) -> list[str]:
     """Splits a migration file into single statements.
 
     psycopg's extended protocol refuses multiple statements in one execute, so
-    migrations are fed one at a time. Semicolons inside a dollar-quoted body
-    belong to the body, which is why this cannot be a plain `sql.split(";")`.
+    migrations are fed one at a time. A semicolon only ends a statement when it
+    stands on its own, which is why this scans instead of splitting: a semicolon
+    inside a dollar-quoted body, a string literal or a comment belongs to its
+    text, and splitting on it would send a fragment to the server.
+
+    Two forms are still not tracked, and both are absent from the migrations: a
+    tagged dollar quote such as `$body$ ... $body$`, which this reads as code,
+    and a `$$` inside a string literal, which it reads as the start of a body.
     """
     statements: list[str] = []
     buffer: list[str] = []
     index = 0
-    while index < len(sql):
-        if sql.startswith("$$", index):
+    length = len(sql)
+    while index < length:
+        pair = sql[index : index + 2]
+        if pair == "$$":
             closing = sql.find("$$", index + 2)
-            end = len(sql) if closing == -1 else closing + 2
-            buffer.append(sql[index:end])
-            index = end
+            end = length if closing == -1 else closing + 2
+        elif pair == "--":
+            newline = sql.find("\n", index)
+            end = length if newline == -1 else newline
+        elif pair == "/*":
+            closing = sql.find("*/", index + 2)
+            end = length if closing == -1 else closing + 2
+        elif sql[index] == "'":
+            end = index + 1
+            while end < length:
+                if sql[end] != "'":
+                    end += 1
+                    continue
+                if sql[end + 1 : end + 2] == "'":
+                    end += 2
+                    continue
+                end += 1
+                break
+        else:
+            character = sql[index]
+            buffer.append(character)
+            if character == ";":
+                statements.append("".join(buffer))
+                buffer = []
+            index += 1
             continue
-        character = sql[index]
-        buffer.append(character)
-        if character == ";":
-            statements.append("".join(buffer))
-            buffer = []
-        index += 1
+        buffer.append(sql[index:end])
+        index = end
     tail = "".join(buffer)
     if tail.strip():
         statements.append(tail)
-    return [
-        statement.strip().removesuffix(";").strip()
-        for statement in statements
-        if statement.strip()
+    stripped = [
+        statement.strip().removesuffix(";").strip() for statement in statements
     ]
+    return [statement for statement in stripped if statement and _is_code(statement)]
 
 
 def _schema_renames(

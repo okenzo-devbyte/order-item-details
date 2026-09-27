@@ -28,6 +28,38 @@ def test_keeps_a_dollar_quoted_body_intact():
     assert statements[1] == "SELECT 2"
 
 
+def test_a_semicolon_in_a_line_comment_does_not_end_a_statement():
+    sql = "SELECT 1; -- drop the old app table;\nSELECT 2;\n"
+    # The comment rides along with the statement it precedes, the way psql
+    # attaches it, so nothing is lost on the way to the server.
+    assert split_statements(sql) == [
+        "SELECT 1",
+        "-- drop the old app table;\nSELECT 2",
+    ]
+
+
+def test_a_semicolon_in_a_block_comment_does_not_end_a_statement():
+    sql = "/* drop the old\n   app table; */\nSELECT 1;\n"
+    assert split_statements(sql) == ["/* drop the old\n   app table; */\nSELECT 1"]
+
+
+def test_a_semicolon_in_a_string_literal_does_not_end_a_statement():
+    sql = "COMMENT ON SCHEMA app IS 'a; b';\nSELECT 2;\n"
+    assert split_statements(sql) == ["COMMENT ON SCHEMA app IS 'a; b'", "SELECT 2"]
+
+
+def test_a_doubled_quote_inside_a_literal_does_not_end_it():
+    sql = "INSERT INTO t (a) VALUES ('it''s; here');\nSELECT 2;\n"
+    assert split_statements(sql) == [
+        "INSERT INTO t (a) VALUES ('it''s; here')",
+        "SELECT 2",
+    ]
+
+
+def test_a_trailing_comment_is_not_sent_as_a_statement_of_its_own():
+    assert split_statements("SELECT 1;\n-- done;\n") == ["SELECT 1"]
+
+
 def test_rename_schemas_rewrites_every_default_schema():
     sql = (
         "CREATE SCHEMA IF NOT EXISTS app;\n"
