@@ -47,6 +47,10 @@ async def lifespan(app: FastAPI):
         app.state.db = database
     _assert_trgm_supported(database)
     bootstrap_admin(database, settings.admin_username, settings.admin_password)
+    if settings.admin_password == "change-me-now":
+        logger.warning(
+            "bootstrap admin uses the default password; change it before use"
+        )
     try:
         yield
     finally:
@@ -54,8 +58,12 @@ async def lifespan(app: FastAPI):
             database.close()
 
 
-def create_app(settings: Settings | None = None, database=None) -> FastAPI:
-    if not isinstance(settings, Settings):
+def create_app(
+    settings: Settings | None = None, database=None
+) -> FastAPI:
+    if database is None and settings is not None and not isinstance(
+        settings, Settings
+    ):
         database = settings
         settings = None
     settings = settings or Settings()

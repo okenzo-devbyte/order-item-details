@@ -2088,7 +2088,7 @@ fail to import until Task 10 rewrites the lifespan and Task 13 retires the
 legacy scripts. Five legacy test files reference `AppDB` and are expected to be
 broken from this task until Task 13 deletes them: `tests/test_passwords.py`,
 `tests/test_audit.py`, `tests/test_security.py` and `tests/test_scripts.py`
-(plus the `test_api_*` files until Task 10 ports them). `api/db_helpers.py`
+(plus the `test_api_*` files until Task 13 deletes them). `api/db_helpers.py`
 must drop the `AppDB` import in the same commit so `api/security.py` still
 imports; `get_app_db` keeps its name until Task 10 renames it to `get_db`.
 
@@ -2600,6 +2600,13 @@ Only after the parity suite is green.
 - Delete: `tests/test_audit.py`
 - Delete: `tests/test_security.py`
 - Delete: `tests/test_scripts.py`
+- Delete: `tests/test_api_boot.py`
+- Delete: `tests/test_api_auth.py`
+- Delete: `tests/test_api_search.py`
+- Delete: `tests/test_api_admin.py`
+- Delete: `tests/test_api_admin_audit.py`
+- Delete: `tests/test_api_admin_import.py`
+- Delete: `tests/test_pwa.py`
 - Modify: `pyproject.toml`
 - Modify: `README.md`
 
@@ -2628,6 +2635,9 @@ git rm tests/test_container.py tests/test_deploy_render.py
 git rm tests/test_engine_product.py tests/test_engine_barcode.py
 git rm tests/test_engine_customer.py tests/test_date_filter.py tests/test_perf.py
 git rm tests/test_passwords.py tests/test_audit.py tests/test_security.py tests/test_scripts.py
+git rm tests/test_api_boot.py tests/test_api_auth.py tests/test_api_search.py
+git rm tests/test_api_admin.py tests/test_api_admin_audit.py tests/test_api_admin_import.py
+git rm tests/test_pwa.py
 ```
 
 Add a replacement admin CLI so operators are not locked out of the only path

@@ -46,3 +46,8 @@ def test_the_audit_log_records_a_search(api):
     entries = api.get("/api/v1/admin/audit?action=search").json()["entries"]
     assert entries
     assert entries[0]["query"] == "สุรชัย"
+
+
+def test_create_app_injects_the_database_by_keyword(client_db):
+    app = create_app(database=client_db)
+    assert app.state.db is client_db
