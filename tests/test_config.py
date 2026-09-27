@@ -70,9 +70,21 @@ def _env_names_for(field_name: str, field) -> set[str]:
     return {str(alias).upper()}
 
 
-def _documented_env_names() -> set[str]:
-    text = (ROOT / ".env.example").read_text(encoding="utf-8")
-    return {line.split("=", 1)[0].strip() for line in text.splitlines() if "=" in line}
+ENV_ASSIGNMENT = re.compile(r"^#?\s*([A-Z][A-Z0-9_]*)\s*=")
+
+
+def _documented_env_names(text: str) -> set[str]:
+    """Every variable name written down, commented out or not.
+
+    A commented `NAME=` still documents the variable. It just refuses to hand a
+    blank value to whoever copies the file, which is what an active `NAME=` does.
+    """
+    names = set()
+    for line in text.splitlines():
+        match = ENV_ASSIGNMENT.match(line.strip())
+        if match:
+            names.add(match.group(1))
+    return names
 
 
 def test_env_example_documents_every_setting():
@@ -82,11 +94,22 @@ def test_env_example_documents_every_setting():
     `DB_SCHEMA_*` while the field names are `schema_*`, so nothing about the field
     declaration hints at the name an operator has to use.
     """
-    documented = _documented_env_names()
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    documented = _documented_env_names(text)
     missing = set()
     for field_name, field in Settings.model_fields.items():
         missing |= _env_names_for(field_name, field) - documented
     assert not missing, f"undocumented in .env.example: {sorted(missing)}"
+
+    blank = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        name, _, value = stripped.partition("=")
+        if not value.strip():
+            blank.append(name.strip())
+    assert not blank, f"active but empty, comment these out instead: {sorted(blank)}"
 
 
 def test_env_example_holds_no_credential():
