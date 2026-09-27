@@ -32,8 +32,8 @@ class TransformedData:
 def transform(rows: list[dict[str, Any]]) -> TransformedData:
     """Turns raw workbook rows into five insert-ready batches.
 
-    Ids are assigned here, densely, in first-seen order, so the SQLite and
-    Postgres backends agree on every id without either of them owning id logic.
+    Ids are assigned here, densely, in first-seen order, so the Postgres loader
+    never has to own id logic of its own.
     """
     usable, report = validate_rows(rows)
 

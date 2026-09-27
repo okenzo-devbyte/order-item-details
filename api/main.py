@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI):
             settings.schema_app,
         )
         app.state.db = database
+    database.migrate()
     _assert_trgm_supported(database)
     bootstrap_admin(database, settings.admin_username, settings.admin_password)
     app.state.rate_limiter = RateLimiter(

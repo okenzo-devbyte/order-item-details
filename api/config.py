@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-SQL_IDENTIFIER = r"^[A-Za-z_][A-Za-z0-9_]*$"
+SQL_IDENTIFIER = r"^[A-Za-z_][A-Za-z0-9_]{0,62}$"
 
 
 class Settings(BaseSettings):
@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     refresh_ttl_days: int = 7
     idle_timeout_minutes: int = 30
     rate_limit_per_minute: int = 60
-    max_upload_bytes: int = 20 * 1024 * 1024
     database_url: str = ""
     # Env var names differ from field names (DB_SCHEMA_*); both are accepted.
     # These three are interpolated into SQL identifiers, so they are restricted to

@@ -22,8 +22,7 @@ def _nfd(text: str) -> str:
 
 def _nfkd(text: str) -> str:
     """Compatibility decomposition. Used by fold_heavy only — never by norm()
-    or fold_light(), whose NFD behaviour is load-bearing for FTS5 trigram
-    matching.
+    or fold_light(), whose NFD behaviour is load-bearing for trigram matching.
 
     Thai 'ำ' (U+0E33 sara am) is a *spacing* character (category Lo) whose
     Unicode decomposition is the compatibility mapping '<compat> 0E4D 0E32'.
@@ -52,9 +51,10 @@ def norm(text: str | None) -> str:
     """Base search form: NFD, keep categories L/N/M, drop whitespace and
     punctuation, lowercase.
 
-    Combining marks (category M) are kept on purpose. FTS5's trigram tokenizer
-    works on character counts, so stripping marks would shorten 'น้ำ' from three
-    characters to two and the query would silently return nothing.
+    Combining marks (category M) are kept on purpose. pg_trgm and the LIKE
+    patterns built from these columns work on character counts, so stripping
+    marks would shorten 'น้ำ' from three characters to two and the query would
+    silently return nothing.
     """
     if not text:
         return ""

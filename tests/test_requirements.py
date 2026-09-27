@@ -21,7 +21,6 @@ DECLARED_NEVER_IMPORTED_BY_NAME = {
     "uvicorn": "run as a console script, never imported by the code",
     "httpx": "reached through fastapi.testclient.TestClient",
     "python-multipart": "FastAPI imports it implicitly to parse form data",
-    "psycopg": "arrives with the Postgres pool, which no module imports yet",
 }
 
 

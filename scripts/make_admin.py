@@ -34,6 +34,7 @@ def main() -> int:
         settings.schema_app,
     )
     try:
+        database.migrate()
         existing = get_by_username(database, args.username)
         if existing is None:
             create_user(database, args.username, args.password, args.role)

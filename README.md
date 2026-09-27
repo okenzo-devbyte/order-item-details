@@ -18,6 +18,13 @@ $env:DATABASE_URL = "<your Supabase transaction pooler url>"
 (`aws-1-ap-southeast-1.pooler.supabase.com`), not the direct connection, which
 is IPv6-only. Append `?sslmode=require` to the URL.
 
+The app runs the migrations and creates the admin account on boot, so a fresh
+database just works. Each request is served over a single pooled connection
+(`max_size=1`), which is deliberate: PgBouncer transaction mode multiplexes one
+backend per app connection, and a named prepared statement rebound to a
+different backend would crash instead of re-planning. That serializes writes
+per process, so plan the expected QPS accordingly.
+
 ## Load the data
 
 ```powershell

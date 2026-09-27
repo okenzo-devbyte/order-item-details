@@ -9,12 +9,12 @@ _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 class FilterModel(BaseModel):
-    store_code: list[str] = Field(default_factory=list)
-    order_type: list[str] = Field(default_factory=list)
-    vip_group: list[str] = Field(default_factory=list)
-    dept: list[int] = Field(default_factory=list)
-    class_code: list[int] = Field(default_factory=list)
-    subclass_code: list[int] = Field(default_factory=list)
+    store_code: list[str] = Field(default_factory=list, max_length=100)
+    order_type: list[str] = Field(default_factory=list, max_length=100)
+    vip_group: list[str] = Field(default_factory=list, max_length=100)
+    dept: list[int] = Field(default_factory=list, max_length=100)
+    class_code: list[int] = Field(default_factory=list, max_length=100)
+    subclass_code: list[int] = Field(default_factory=list, max_length=100)
     date_from: str | None = None
     date_to: str | None = None
 
