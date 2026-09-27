@@ -16,17 +16,17 @@ class TestEmptyFilters:
 class TestEqualityFilters:
     def test_single_store(self):
         sql, params = params_for(Filters(store_code=("135",)))
-        assert "o.store_code IN (?)" in sql
+        assert "o.store_code IN (%s)" in sql
         assert params == ["135"]
 
     def test_multiple_stores_are_or_within_the_group(self):
         sql, params = params_for(Filters(store_code=("135", "140")))
-        assert sql.count("?") == 2
+        assert sql.count("%s") == 2
         assert params == ["135", "140"]
 
     def test_order_type(self):
         sql, params = params_for(Filters(order_type=("Pickup",)))
-        assert "o.order_type IN (?)" in sql
+        assert "o.order_type IN (%s)" in sql
         assert params == ["Pickup"]
 
     def test_dept_class_subclass(self):
@@ -61,8 +61,8 @@ class TestDateFilter:
         sql, params = params_for(
             Filters(date_from="2026-09-01", date_to="2026-09-30")
         )
-        assert "o.date_from <= ?" in sql
-        assert "o.date_to >= ?" in sql
+        assert "o.date_from <= %s" in sql
+        assert "o.date_to >= %s" in sql
         assert params == ["2026-09-30", "2026-09-01"]
 
     def test_orders_without_a_date_are_excluded_when_filtering(self):
@@ -75,13 +75,13 @@ class TestDateFilter:
 
     def test_only_one_bound_is_allowed(self):
         sql, params = order_filter_sql(Filters(date_from="2026-09-01"))
-        assert "o.date_from <= ?" not in sql
-        assert "o.date_to >= ?" in sql
+        assert "o.date_from <= %s" not in sql
+        assert "o.date_to >= %s" in sql
         assert list(params) == ["2026-09-01"]
 
         sql, params = order_filter_sql(Filters(date_to="2026-09-30"))
-        assert "o.date_from <= ?" in sql
-        assert "o.date_to >= ?" not in sql
+        assert "o.date_from <= %s" in sql
+        assert "o.date_to >= %s" not in sql
         assert list(params) == ["2026-09-30"]
 
     def test_values_are_iso_comparable_strings(self):

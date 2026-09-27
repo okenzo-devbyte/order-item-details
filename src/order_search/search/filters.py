@@ -70,7 +70,7 @@ def _clean(values: Any) -> tuple:
 
 
 def _in_clause(column: str, values: tuple) -> tuple[str, list]:
-    placeholders = ",".join("?" for _ in values)
+    placeholders = ",".join("%s" for _ in values)
     return f"{column} IN ({placeholders})", list(values)
 
 
@@ -105,10 +105,10 @@ def order_filter_sql(filters: Filters) -> tuple[str, list]:
 
     date_clauses: list[str] = []
     if filters.date_to:
-        date_clauses.append("o.date_from <= ?")
+        date_clauses.append("o.date_from <= %s")
         params.append(filters.date_to)
     if filters.date_from:
-        date_clauses.append("o.date_to >= ?")
+        date_clauses.append("o.date_to >= %s")
         params.append(filters.date_from)
     if date_clauses:
         date_clauses.append("o.date_from IS NOT NULL")

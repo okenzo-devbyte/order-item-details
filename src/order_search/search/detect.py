@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import sqlite3
 from dataclasses import dataclass
 
+from ..db import Reader, Tables
 from ..textnorm import is_barcode_like, norm
 
 BARCODE = "barcode"
@@ -11,7 +11,7 @@ PRODUCT = "product"
 BOTH = "both"
 NONE = "none"
 
-# FTS5's trigram tokenizer cannot match anything shorter than this.
+# pg_trgm cannot match anything shorter than this.
 MIN_TRIGRAM = 3
 
 
@@ -28,7 +28,7 @@ def _escape_like(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def detect(query: str, connection: sqlite3.Connection) -> Detection:
+def detect(query: str, reader: Reader, tables: Tables) -> Detection:
     """Decides what the user is looking for.
 
     Order of tests matters: digits go to the barcode path first, an exact
@@ -37,9 +37,9 @@ def detect(query: str, connection: sqlite3.Connection) -> Detection:
 
     Product IDs are populated only when the query exactly matches a customer
     name AND prefixes at least one product name (the BOTH case). A pure
-    product query leaves product_ids empty; the engine resolves those via FTS.
-    An exact `=` cannot be used for the product side because stored product
-    names are always longer than a customer name that prefixes them.
+    product query leaves product_ids empty; the engine resolves those via
+    trigram. An exact `=` cannot be used for the product side because stored
+    product names are always longer than a customer name that prefixes them.
 
     The query is coerced with str() rather than assumed to be text, so a
     numeric query from a JSON payload degrades to a product search instead of
@@ -54,16 +54,17 @@ def detect(query: str, connection: sqlite3.Connection) -> Detection:
     if is_barcode_like(text):
         return Detection(BARCODE, normalized)
 
-    exact_customer = connection.execute(
-        "SELECT id FROM customers WHERE name_norm = ? ORDER BY id LIMIT 1",
+    exact_customer = reader.one(
+        f"SELECT id FROM {tables.customers} WHERE name_norm = %s"
+        " ORDER BY id LIMIT 1",
         (normalized,),
-    ).fetchone()
+    )
     if exact_customer is not None:
-        prefixed_products = connection.execute(
-            "SELECT id FROM products WHERE name_norm LIKE ? ESCAPE '\\'"
-            " ORDER BY id",
+        prefixed_products = reader.all(
+            f"SELECT id FROM {tables.products} WHERE name_norm LIKE %s"
+            " ESCAPE '\\' ORDER BY id",
             (_escape_like(normalized) + "%",),
-        ).fetchall()
+        )
         product_ids = tuple(row["id"] for row in prefixed_products)
         kind = BOTH if product_ids else CUSTOMER
         return Detection(kind, normalized, exact_customer["id"], product_ids)
