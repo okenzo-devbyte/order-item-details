@@ -44,10 +44,6 @@ class SuggestRequest(BaseModel):
     limit: int = Field(default=8, ge=1, le=20)
 
 
-class RollbackRequest(BaseModel):
-    version_id: int
-
-
 class UserCreateRequest(BaseModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=8, max_length=256)

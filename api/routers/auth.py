@@ -5,7 +5,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from .. import audit, security
-from ..db_helpers import client_ip, get_app_db, get_settings, user_agent
+from ..db_helpers import client_ip, get_db, get_settings, user_agent
 from ..schemas import LoginRequest
 from ..users import authenticate
 
@@ -20,7 +20,7 @@ def login(
     _limit=Depends(security.login_rate_limit),
 ):
     settings = get_settings(request)
-    db = get_app_db(request)
+    db = get_db(request)
     user = authenticate(db, payload.username, payload.password)
     if user is None:
         audit.record(
@@ -56,7 +56,7 @@ def login(
 @router.post("/logout")
 def logout(request: Request, response: Response):
     settings = get_settings(request)
-    db = get_app_db(request)
+    db = get_db(request)
     security.revoke_refresh(
         db, settings.secret_key, request.cookies.get(security.COOKIE_REFRESH)
     )
@@ -67,7 +67,7 @@ def logout(request: Request, response: Response):
 @router.post("/refresh")
 def refresh(request: Request, response: Response):
     settings = get_settings(request)
-    db = get_app_db(request)
+    db = get_db(request)
     token = request.cookies.get(security.COOKIE_REFRESH)
     if not token:
         raise HTTPException(401, "no refresh token")

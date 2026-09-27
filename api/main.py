@@ -1,22 +1,19 @@
 from __future__ import annotations
 
-import hashlib
 import logging
-import sqlite3
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import psycopg
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import crypto
-from .app_db import AppDB
 from .config import Settings
+from .db import Database
+from .db_helpers import get_db
 from .ratelimit import RateLimiter
-from .snapshot import SnapshotStore
 from .users import bootstrap_admin
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
@@ -24,18 +21,11 @@ logger = logging.getLogger("order_search")
 INSECURE_SECRET = "dev-insecure-secret-change-me"
 
 
-def _assert_fts5_supported() -> None:
-    probe = sqlite3.connect(":memory:")
+def _assert_trgm_supported(database) -> None:
     try:
-        probe.execute("CREATE VIRTUAL TABLE t USING fts5(x, tokenize='trigram')")
-        probe.execute("INSERT INTO t VALUES ('ทดสอบ')")
-        probe.execute("SELECT rowid FROM t WHERE x MATCH 'ทดสอบ'").fetchall()
-    except sqlite3.OperationalError as exc:
-        raise RuntimeError(
-            "this SQLite build lacks FTS5 trigram support"
-        ) from exc
-    finally:
-        probe.close()
+        database.one("SELECT similarity('abc', 'abd')")
+    except psycopg.Error as exc:
+        raise RuntimeError("this database lacks the pg_trgm extension") from exc
 
 
 @asynccontextmanager
@@ -45,52 +35,29 @@ async def lifespan(app: FastAPI):
         raise RuntimeError(
             "SECRET_KEY is still the insecure default; set a strong random value"
         )
-    _assert_fts5_supported()
-
-    keyring = {settings.data_key_id: crypto.load_key(settings.data_key)}
-    snapshot = SnapshotStore(keyring, settings.data_key_id)
-    app.state.snapshot = snapshot
-
-    db = AppDB(settings.app_db_path)
-    app.state.app_db = db
-    app.state.rate_limiter = RateLimiter(settings.rate_limit_per_minute)
-    if bootstrap_admin(db, settings.admin_username, settings.admin_password):
-        logger.info("bootstrap admin account created")
-        if settings.admin_password == "change-me-now":
-            logger.warning(
-                "bootstrap admin uses the default password; change it before use"
-            )
-    if db.query_one("SELECT COUNT(*) AS n FROM import_versions")["n"] == 0:
-        sealed = Path(settings.snapshot_file).read_bytes()
-        db.run(
-            "INSERT INTO import_versions (path, sha256, row_count,"
-            " product_count, customer_count, is_current, created_at,"
-            " created_by) VALUES (?,?,NULL,NULL,NULL,1,?,NULL)",
-            (
-                str(settings.snapshot_file),
-                hashlib.sha256(sealed).hexdigest(),
-                datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            ),
+    database = getattr(app.state, "db", None)
+    owns_database = database is None
+    if owns_database:
+        database = Database(
+            settings.database_url,
+            settings.schema_item,
+            settings.schema_sales,
+            settings.schema_app,
         )
-
-    load_path = settings.snapshot_file
-    if settings.persistent:
-        row = db.query_one(
-            "SELECT path FROM import_versions WHERE is_current = 1"
-            " ORDER BY id DESC LIMIT 1"
-        )
-        if row is not None and Path(row["path"]).is_file():
-            load_path = Path(row["path"])
-    snapshot.load_file(load_path)
-
+        app.state.db = database
+    _assert_trgm_supported(database)
+    bootstrap_admin(database, settings.admin_username, settings.admin_password)
     try:
         yield
     finally:
-        snapshot.close()
-        db.close()
+        if owns_database:
+            database.close()
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, database=None) -> FastAPI:
+    if not isinstance(settings, Settings):
+        database = settings
+        settings = None
     settings = settings or Settings()
     app = FastAPI(
         title="Order Search",
@@ -99,6 +66,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.settings = settings
+    if database is not None:
+        app.state.db = database
+    app.state.rate_limiter = RateLimiter(settings.rate_limit_per_minute)
 
     if settings.allowed_hosts and settings.allowed_hosts != "*":
         from starlette.middleware.trustedhost import TrustedHostMiddleware
@@ -144,11 +114,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await call_next(request)
 
     @app.get("/healthz")
-    def healthz():
-        snapshot = getattr(app.state, "snapshot", None)
+    def healthz(request: Request):
+        db = get_db(request)
+        row = db.one(
+            f"SELECT product_count, customer_count, order_count"
+            f' FROM "{db.schema_app}"."data_versions" WHERE is_current'
+        )
+        if row is None:
+            return JSONResponse(
+                {"status": "no data", "products": 0}, status_code=503
+            )
         return {
             "status": "ok",
-            "snapshot": snapshot is not None and snapshot.loaded,
+            "products": row["product_count"],
+            "customers": row["customer_count"],
+            "orders": row["order_count"],
         }
 
     from .routers import admin, auth, filters, search

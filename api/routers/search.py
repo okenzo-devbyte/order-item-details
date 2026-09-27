@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from order_search.db import Tables
+from order_search.search.engine import SearchEngine
 from order_search.search.filters import Filters
 
 from .. import audit, security
-from ..db_helpers import client_ip, get_app_db, user_agent
+from ..db_helpers import client_ip, get_db, user_agent
 from ..schemas import SearchRequest, SuggestRequest
 
 router = APIRouter(prefix="/api/v1", tags=["search"])
@@ -17,13 +19,18 @@ def _filters(payload):
     return Filters(**payload.filters.model_dump())
 
 
+def _engine(request: Request) -> SearchEngine:
+    db = get_db(request)
+    return SearchEngine(db, Tables.from_schemas(db.schema_item, db.schema_sales))
+
+
 @router.post("/search")
 def search(
     payload: SearchRequest,
     request: Request,
     user=Depends(security.rate_limit),
 ):
-    result = request.app.state.snapshot.search(
+    result = _engine(request).search(
         query=payload.q,
         mode=payload.mode,
         filters=_filters(payload),
@@ -31,7 +38,7 @@ def search(
         cursor=payload.cursor,
     )
     audit.record(
-        get_app_db(request),
+        get_db(request),
         action="search",
         user_id=user["id"],
         query=payload.q,
@@ -49,11 +56,9 @@ def suggest(
     request: Request,
     user=Depends(security.rate_limit),
 ):
-    suggestions = request.app.state.snapshot.suggest(
-        payload.q, limit=payload.limit
-    )
+    suggestions = _engine(request).suggest(payload.q, limit=payload.limit)
     audit.record(
-        get_app_db(request),
+        get_db(request),
         action="suggest",
         user_id=user["id"],
         query=payload.q,
@@ -76,7 +81,7 @@ def customer_history(
         filters = Filters(date_from=date_from, date_to=date_to)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from None
-    history = request.app.state.snapshot.customer_history(customer_id, filters)
+    history = _engine(request).customer_history(customer_id, filters)
     if not history:
         raise HTTPException(404, "customer not found")
     return history[0]
@@ -88,7 +93,7 @@ def product_customers(
     request: Request,
     user=Depends(security.rate_limit),
 ):
-    results = request.app.state.snapshot.product_customers(product_id)
+    results = _engine(request).product_customers(product_id)
     if not results:
         raise HTTPException(404, "product not found")
     return results[0]

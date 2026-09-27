@@ -9,7 +9,7 @@ import jwt
 from fastapi import Depends, HTTPException, Request, Response
 
 from . import users
-from .db_helpers import get_app_db, get_settings
+from .db_helpers import get_db, get_settings
 
 ACCESS = "access"
 REFRESH = "refresh"
@@ -162,7 +162,7 @@ def clear_auth_cookies(response: Response) -> None:
 
 def _user_from_request(request: Request):
     settings = get_settings(request)
-    db = get_app_db(request)
+    db = get_db(request)
     token = request.cookies.get(COOKIE_ACCESS)
     if not token:
         raise HTTPException(401, "not authenticated")
