@@ -43,6 +43,19 @@ class RowsReader:
         return self.rows
 
 
+class RecordingReader:
+    def __init__(self, rows):
+        self.rows = rows
+        self.seen = []
+
+    def one(self, sql, params=()):
+        return None
+
+    def all(self, sql, params=()):
+        self.seen.append(sql)
+        return self.rows
+
+
 @pytest.fixture
 def product_reader():
     rows = [
@@ -67,6 +80,26 @@ def customer_reader():
         for cid, name in CUSTOMERS
     ]
     return RowsReader(rows)
+
+
+def test_best_customers_queries_the_qualified_schema():
+    reader = RecordingReader(
+        [{"id": 1, "name_norm": "สุรชัย", "name_fold_light": "สุรชัย"}]
+    )
+    best_customers("สุรชัย", reader, TABLES)
+    assert 't_sales"."customers' in reader.seen[0]
+    assert "name_fold_light" in reader.seen[0]
+    assert "name_norm" in reader.seen[0]
+
+
+def test_best_products_queries_the_qualified_schema():
+    reader = RecordingReader(
+        [{"id": 1, "name_norm": WATER, "name_fold_heavy": fold_heavy(WATER)}]
+    )
+    best_products("น้ำ", reader, TABLES)
+    assert 't_item"."products' in reader.seen[0]
+    assert "name_fold_heavy" in reader.seen[0]
+    assert "name_norm" in reader.seen[0]
 
 
 TABLES = Tables.from_schemas("t_item", "t_sales")
