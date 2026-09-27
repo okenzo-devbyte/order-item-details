@@ -47,6 +47,9 @@ async def lifespan(app: FastAPI):
         app.state.db = database
     _assert_trgm_supported(database)
     bootstrap_admin(database, settings.admin_username, settings.admin_password)
+    app.state.rate_limiter = RateLimiter(
+        database, settings.rate_limit_per_minute
+    )
     if settings.admin_password == "change-me-now":
         logger.warning(
             "bootstrap admin uses the default password; change it before use"
@@ -76,7 +79,6 @@ def create_app(
     app.state.settings = settings
     if database is not None:
         app.state.db = database
-    app.state.rate_limiter = RateLimiter(settings.rate_limit_per_minute)
 
     if settings.allowed_hosts and settings.allowed_hosts != "*":
         from starlette.middleware.trustedhost import TrustedHostMiddleware
