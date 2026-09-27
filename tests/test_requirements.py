@@ -1,11 +1,14 @@
 import ast
+import os
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-SOURCE_DIRS = ("api", "src", "scripts", "tests")
+SKIPPED_DIRECTORY_PREFIXES = (".", "_")
+
+SKIPPED_DIRECTORY_NAMES = {"build", "dist", "node_modules", "venv"}
 
 IMPORT_TO_DISTRIBUTION = {
     "argon2": "argon2-cffi",
@@ -21,6 +24,54 @@ DECLARED_NEVER_IMPORTED_BY_NAME = {
 }
 
 
+def _is_skipped(name: str) -> bool:
+    return name in SKIPPED_DIRECTORY_NAMES or name.startswith(SKIPPED_DIRECTORY_PREFIXES)
+
+
+def _source_directories() -> list[Path]:
+    """Top-level directories holding Python that this repository owns.
+
+    Found by walking the root rather than listed, so a new source directory is
+    covered without editing anything. Dotted, underscore, venv and build
+    directories are skipped: they are not ours, they are usually untracked, and
+    `.venv` on a developer machine would put its contents into the local-name set
+    where a clean checkout has nothing, which is the kind of difference that only
+    shows up on someone else's machine.
+    """
+    directories = []
+    for entry in sorted(ROOT.iterdir()):
+        if entry.is_dir() and not _is_skipped(entry.name) and any(entry.rglob("*.py")):
+            directories.append(entry)
+    return directories
+
+
+def _python_files(directory: Path) -> list[Path]:
+    files = []
+    for parent, dirs, names in os.walk(directory):
+        dirs[:] = [name for name in dirs if not _is_skipped(name)]
+        files.extend(Path(parent) / name for name in sorted(names) if name.endswith(".py"))
+    return files
+
+
+def _local_top_level_names(source_dirs: list[Path]) -> set[str]:
+    """Every top-level name that resolves to a file inside this repository.
+
+    Derived from the same directories that are scanned for imports, so the two
+    cannot drift apart. A directory counts when it holds any Python file, which
+    covers real packages and also `scripts`, an implicit namespace package with no
+    `__init__.py`.
+    """
+    names = set()
+    for directory in source_dirs:
+        names.add(directory.name)
+        for entry in directory.iterdir():
+            if entry.is_file() and entry.suffix == ".py" and entry.stem != "__init__":
+                names.add(entry.stem)
+            elif entry.is_dir() and not _is_skipped(entry.name) and any(entry.rglob("*.py")):
+                names.add(entry.name)
+    return names
+
+
 def _declared_distributions() -> set[str]:
     names = set()
     for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines():
@@ -32,28 +83,10 @@ def _declared_distributions() -> set[str]:
     return names
 
 
-def _local_top_level_names() -> set[str]:
-    """Every top-level name that resolves to a file inside this repository.
-
-    Derived from the tree rather than listed, so adding a local module does not
-    turn these red until someone remembers to update a set. A directory counts
-    when it holds any Python file, which covers real packages and also `scripts`,
-    which is an implicit namespace package with no `__init__.py`.
-    """
-    names = set()
-    for root in (ROOT, ROOT / "src", ROOT / "tests"):
-        for entry in root.iterdir():
-            if entry.is_dir() and any(entry.rglob("*.py")):
-                names.add(entry.name)
-            elif entry.suffix == ".py" and entry.stem != "__init__":
-                names.add(entry.stem)
-    return names
-
-
-def _imported_names_by_file() -> dict[str, set[str]]:
+def _imported_names_by_file(source_dirs: list[Path]) -> dict[str, set[str]]:
     imported: dict[str, set[str]] = {}
-    for folder in SOURCE_DIRS:
-        for path in sorted((ROOT / folder).rglob("*.py")):
+    for directory in source_dirs:
+        for path in _python_files(directory):
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             names = set()
             for node in ast.walk(tree):
@@ -67,10 +100,11 @@ def _imported_names_by_file() -> dict[str, set[str]]:
 
 
 def _third_party_distributions() -> tuple[dict[str, set[str]], set[str]]:
-    local = _local_top_level_names() | set(sys.stdlib_module_names)
+    source_dirs = _source_directories()
+    local = _local_top_level_names(source_dirs) | set(sys.stdlib_module_names)
     by_file: dict[str, set[str]] = {}
     everything: set[str] = set()
-    for path, names in _imported_names_by_file().items():
+    for path, names in _imported_names_by_file(source_dirs).items():
         third_party = names - local
         by_file[path] = third_party
         everything.update(IMPORT_TO_DISTRIBUTION.get(name, name) for name in third_party)
