@@ -28,13 +28,26 @@ the system running on Supabase.
 - A Supabase project in region `sin1`
 - Its **Transaction pooler** connection string (port 6543), because the direct
   connection is IPv6-only and this code runs on IPv4 networks
-- `psycopg` installed into `.venv` by Task 1
 
-Export both for the test suite:
+Put the connection string in a `.env` file at the repository root. The file is
+already gitignored, and `pydantic-settings` already reads it, so the scripts
+and the test suite both pick it up without anyone pasting a password into a
+chat window or a command line.
+
+```
+DATABASE_URL=postgresql://postgres.PROJECT:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require
+```
+
+Create it in Notepad if you prefer, not in PowerShell, so the URL never lands
+in your shell history:
 
 ```powershell
-$env:TEST_DATABASE_URL = "postgresql://postgres.PROJECT:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres?sslmode=require"
+notepad .env
 ```
+
+The test suite connects to the same project under the schemas `t_item`,
+`t_sales` and `t_app`, so it needs no second credential. It never touches
+`item`, `sales` or `app`.
 
 ## Ground truth that must keep passing
 
@@ -646,17 +659,41 @@ Append to `tests/conftest.py`:
 
 ```python
 import os
+from pathlib import Path
 
 import pytest
 
-TEST_URL = os.environ.get("TEST_DATABASE_URL", "")
+ROOT = Path(__file__).resolve().parents[1]
 TEST_SCHEMAS = ("t_item", "t_sales", "t_app")
+
+
+def _test_dsn() -> str:
+    """The test suite shares one credential with the application.
+
+    It connects to the same project but under the `t_` schemas, so there is no
+    second secret to manage. `.env` is read here because `pydantic-settings`
+    reads it for `Settings`, and a password should never have to be passed on
+    a command line to run the tests.
+    """
+    explicit = os.environ.get("TEST_DATABASE_URL", "")
+    if explicit:
+        return explicit
+    env_file = ROOT / ".env"
+    if env_file.is_file():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line.startswith("DATABASE_URL="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+TEST_URL = _test_dsn()
 
 
 def pytest_collection_modifyitems(config, items):
     if TEST_URL:
         return
-    skip = pytest.mark.skip(reason="TEST_DATABASE_URL is not set")
+    skip = pytest.mark.skip(reason="no DATABASE_URL in the environment or .env")
     for item in items:
         if "client_db" in getattr(item, "fixturenames", ()):
             item.add_marker(skip)
@@ -681,7 +718,7 @@ a migration that works in the test schemas works in the real ones.
 
 - [ ] **Step 4: Run it to verify it passes**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_fixture_health.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_fixture_health.py -o addopts="" -q`
 Expected: PASS. Without the environment variable it skips, and the skip is
 itself correct behaviour.
 
@@ -1524,7 +1561,7 @@ def test_a_customer_detail_lists_that_customers_products(loaded):
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_parity.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_parity.py -o addopts="" -q`
 Expected: FAIL, `ModuleNotFoundError: No module named 'order_search.ingest.load'`
 
 - [ ] **Step 3: Write the loader**
@@ -1688,7 +1725,7 @@ cannot collide with the first version's index names.
 
 - [ ] **Step 4: Run the parity tests**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_parity.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_parity.py -o addopts="" -q`
 Expected: PASS, all seven. If `test_a_short_product_query_finds_four_products`
 fails, the trigram layer or the `name_fold_light` pairing is wrong; go back to
 Task 7 rather than loosening the test.
@@ -1808,7 +1845,7 @@ def test_revoking_everything_blocks_the_user(session_db):
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_users_pg.py tests\test_security_pg.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_users_pg.py tests\test_security_pg.py -o addopts="" -q`
 Expected: FAIL, `api.app_db` no longer exists
 
 - [ ] **Step 3: Port users.py**
@@ -1973,7 +2010,7 @@ Add `from datetime import timedelta` to the module so the test can pass
 
 - [ ] **Step 6: Run the new tests**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_users_pg.py tests\test_security_pg.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_users_pg.py tests\test_security_pg.py -o addopts="" -q`
 Expected: PASS
 
 - [ ] **Step 7: Delete the SQLite app database**
@@ -2063,7 +2100,7 @@ def test_the_audit_log_records_a_search(api):
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_api_pg.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_api_pg.py -o addopts="" -q`
 Expected: FAIL, `create_app()` takes 0 positional arguments
 
 - [ ] **Step 3: Change the lifespan**
@@ -2199,7 +2236,7 @@ search, auth, user and audit endpoints still use.
 
 - [ ] **Step 6: Run the API tests**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_api_pg.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_api_pg.py -o addopts="" -q`
 Expected: PASS
 
 - [ ] **Step 7: Commit**
@@ -2265,7 +2302,7 @@ def test_the_budget_resets_in_the_next_window(client_db):
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_ratelimit_pg.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_ratelimit_pg.py -o addopts="" -q`
 Expected: FAIL, `RateLimiter()` takes 1 positional argument but 2 were given
 
 - [ ] **Step 3: Rewrite the limiter**
@@ -2318,7 +2355,7 @@ signature is unchanged.
 
 - [ ] **Step 5: Run the tests**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_ratelimit_pg.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_ratelimit_pg.py -o addopts="" -q`
 Expected: PASS
 
 - [ ] **Step 6: Delete the old test and commit**
@@ -2354,7 +2391,6 @@ def test_the_script_reports_the_import_counts(tmp_path):
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT / "src")
     env["PYTHONIOENCODING"] = "utf-8"
-    env["DATABASE_URL"] = os.environ["TEST_DATABASE_URL"]
     env["DB_SCHEMA_ITEM"] = "t_item"
     env["DB_SCHEMA_SALES"] = "t_sales"
     env["DB_SCHEMA_APP"] = "t_app"
@@ -2380,7 +2416,7 @@ def test_the_script_writes_into_the_configured_schemas(client_db):
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_load_script.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_load_script.py -o addopts="" -q`
 Expected: FAIL, the script does not exist
 
 - [ ] **Step 3: Write the script**
@@ -2455,7 +2491,7 @@ if __name__ == "__main__":
 
 - [ ] **Step 4: Run the test**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_load_script.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_load_script.py -o addopts="" -q`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
@@ -2491,7 +2527,7 @@ Only after the parity suite is green.
 
 - [ ] **Step 1: Confirm parity is green first**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest tests\test_parity.py -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest tests\test_parity.py -o addopts="" -q`
 Expected: PASS. If it is not, stop. Deleting the old path without parity is how
 the ground truth is lost.
 
@@ -2621,7 +2657,7 @@ and that the direct connection is IPv6-only.
 
 - [ ] **Step 6: Run the full suite**
 
-Run: `$env:TEST_DATABASE_URL="postgresql://..."; .\.venv\Scripts\python.exe -m pytest -o addopts="" -q`
+Run: `.\.venv\Scripts\python.exe -m pytest -o addopts="" -q`
 Expected: PASS, with no collection errors from the deleted modules. Fix any
 leftover import of `api.crypto` or `api.snapshot`.
 
@@ -2639,7 +2675,6 @@ git commit -m "refactor: retire the sealed SQLite snapshot and the container dep
 - [ ] **Step 1: Run the whole suite one more time**
 
 ```powershell
-$env:TEST_DATABASE_URL="postgresql://..."
 .\.venv\Scripts\python.exe -m pytest -o addopts="" -q
 ```
 Expected: PASS. Record the count in the commit message.
@@ -2647,17 +2682,18 @@ Expected: PASS. Record the count in the commit message.
 - [ ] **Step 2: Load the real project**
 
 ```powershell
-$env:DATABASE_URL = "<your Supabase transaction pooler url>"
 $env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe scripts\load_postgres.py sample_order_data_1000_records.xlsx
 ```
-Expected: products 15, customers 20, orders 1000, barcodes 127.
+Expected: products 15, customers 20, orders 1000, barcodes 127. The script
+reads `DATABASE_URL` from `.env`.
 
 - [ ] **Step 3: Start the app and drive it**
 
 ```powershell
 $env:SECRET_KEY = "a-long-random-value-for-local-use-only"
 $env:ADMIN_PASSWORD = "change-me-now"
+$env:PYTHONPATH = "src"
 .\.venv\Scripts\python.exe -m uvicorn api.main:app --host 0.0.0.0 --port 8000
 ```
 
