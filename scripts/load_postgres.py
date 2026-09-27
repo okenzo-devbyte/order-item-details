@@ -39,6 +39,7 @@ def main() -> int:
         settings.schema_app,
     )
     try:
+        database.migrate()
         data = load_into_version(
             database, read_order_rows(source), args.version, source_filename=source.name
         )
