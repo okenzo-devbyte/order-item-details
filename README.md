@@ -97,3 +97,5 @@ matched against.
 - Sessions use httpOnly access/refresh cookies with rotation; the CSRF token is
   read by the app and echoed in the `X-CSRF-Token` header.
 - The service worker caches the app shell only, never `/api/`.
+- The retired snapshot path stored keys in `build/`; delete any leftover
+  `build/data_key.txt` and `build/local-credentials.txt` from older checkouts.

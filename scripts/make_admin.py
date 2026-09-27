@@ -10,7 +10,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from api.config import Settings
 from api.db import Database
-from api.users import bootstrap_admin, create_user, get_by_username, update_user
+from api.users import create_user, get_by_username, update_user
 
 
 def main() -> int:
