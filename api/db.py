@@ -248,7 +248,9 @@ class Database:
         which points at the schema rather than at the packaging.
         """
         if not MIGRATIONS_DIR.is_dir():
-            raise FileNotFoundError(f"the migrations directory is missing: {MIGRATIONS_DIR}")
+            raise FileNotFoundError(
+                f"the migrations directory is missing: {MIGRATIONS_DIR}"
+            )
         paths = sorted(MIGRATIONS_DIR.glob("*.sql"))
         if not paths:
             raise FileNotFoundError(f"no migration file to apply in {MIGRATIONS_DIR}")
@@ -269,13 +271,16 @@ class Database:
         A file and its ledger row are written in one transaction, so a crash
         leaves the file unapplied rather than applied and unrecorded.
         """
-        renames = _schema_renames(self.schema_item, self.schema_sales, self.schema_app)
+        renames = _schema_renames(
+            self.schema_item, self.schema_sales, self.schema_app
+        )
         paths = self._migration_files()
         ledger = app_table(self.schema_app, "schema_migrations")
         with self._connection(None) as conn:
             self.execute_script(_rename_schemas(LEDGER_DDL, renames), conn=conn)
             recorded = {
-                row["name"] for row in self.all(f"SELECT name FROM {ledger}", conn=conn)
+                row["name"]
+                for row in self.all(f"SELECT name FROM {ledger}", conn=conn)
             }
         applied: list[str] = []
         for path in paths:
@@ -284,7 +289,9 @@ class Database:
             sql = _rename_schemas(path.read_text(encoding="utf-8"), renames)
             with self.transaction() as conn:
                 self.execute_script(sql, conn=conn)
-                self.run(f"INSERT INTO {ledger} (name) VALUES (%s)", (path.name,), conn=conn)
+                self.run(
+                    f"INSERT INTO {ledger} (name) VALUES (%s)", (path.name,), conn=conn
+                )
             applied.append(path.name)
         return applied
 
