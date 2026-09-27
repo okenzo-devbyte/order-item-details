@@ -1,0 +1,10 @@
+.venv
+.git
+.pytest_cache
+docs
+tests
+__pycache__
+*.pyc
+.superpowers
+build
+render.yaml

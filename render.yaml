@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: order-search
+    runtime: docker
+    plan: free
+    healthCheckPath: /healthz
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATA_KEY
+        sync: false
+      - key: DATA_KEY_ID
+        value: v1
+      - key: ADMIN_USERNAME
+        value: admin
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: SNAPSHOT_PATH
+        value: /app/data/snapshot.enc
