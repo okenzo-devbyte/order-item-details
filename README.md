@@ -122,6 +122,28 @@ Push the repository, create the service from `render.yaml`, then set `DATA_KEY`
 the dashboard. Free instances have no persistent disk, so `users` and
 `audit_log` reset on redeploy; attach a disk and set `DISK_PATH` to keep them.
 
+#### Deploy without connecting a Git provider
+
+If the Render GitHub connection is unavailable, build the image elsewhere and
+let Render run it as a prebuilt image.
+
+1. Create a Docker Hub repository named `order-search`.
+2. Add `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` as repository secrets, then
+   run the `Publish image` workflow. It builds the Dockerfile and pushes
+   `<username>/order-search:latest`.
+3. Create a Render API key and deploy:
+
+```powershell
+$env:RENDER_API_KEY = "<your render api key>"
+$env:DATA_KEY = Get-Content build\data_key.txt
+$env:ADMIN_PASSWORD = "<your admin password>"
+.\.venv\Scripts\python.exe scripts\deploy_render.py --image "docker.io/<username>/order-search:latest"
+```
+
+The script creates the service, or updates it when one of that name already
+exists, and generates `SECRET_KEY` unless you supply one. Add `--dry-run` to
+print the request body without calling the API.
+
 ### Security notes
 
 - Search and suggest are `POST` so customer text never lands in a URL.
