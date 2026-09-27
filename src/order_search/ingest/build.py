@@ -5,9 +5,22 @@ from typing import Any
 
 from .schema_path import SCHEMA_PATH
 from .transform import transform
+from .validate import ImportReport
 
 
 def apply_schema(connection: sqlite3.Connection) -> None:
+    """Drops and recreates the seven snapshot tables (plus FTS shadows).
+
+    Destructive by design: every call wipes rows in products, customers,
+    orders, order_items, product_barcodes, products_fts and meta. Tables this
+    file does not own — `users`, `audit_log`, or anything a later plan adds
+    to a separate file — are left untouched.
+
+    The connection must be autocommit (isolation_level=None). `executescript`
+    issues an implicit COMMIT first, so on a non-autocommit connection it
+    would silently commit the caller's pending transaction. The assert makes
+    that misuse fail loudly instead.
+    """
     assert connection.isolation_level is None, (
         "apply_schema requires an autocommit connection (isolation_level=None);"
         " passing a transactional connection would implicitly commit it"
@@ -18,7 +31,13 @@ def apply_schema(connection: sqlite3.Connection) -> None:
 def build_database(
     rows: list[dict[str, Any]],
     connection: sqlite3.Connection,
-) -> Any:
+) -> ImportReport:
+    """Writes rows into a freshly created schema and returns the import report.
+
+    The connection must be autocommit (isolation_level=None) because this
+    function manages its own transaction. The whole insert set is one
+    transaction: either every row lands or none does.
+    """
     data = transform(rows)
     apply_schema(connection)
 

@@ -55,7 +55,7 @@ def transform(rows: list[dict[str, Any]]) -> TransformedData:
                 row.get("Class"),
                 row.get("Subclass"),
                 parse_pack_size(name),
-                None,
+                None,  # unit is absent from the source file, so never guessed
             )
         )
 
@@ -97,7 +97,7 @@ def transform(rows: list[dict[str, Any]]) -> TransformedData:
         )
         item_rows.append((order_id, product_id, row.get("qty"), row.get("price")))
 
-    barcode_pairs = _barcode_pairs(usable)
+    barcode_pairs = _barcode_pairs(usable, product_ids)
 
     report.products = len(product_ids)
     report.customers = len(customer_ids)
@@ -115,18 +115,15 @@ def transform(rows: list[dict[str, Any]]) -> TransformedData:
     )
 
 
-def _barcode_pairs(usable: list[dict[str, Any]]) -> list[tuple[int, str]]:
+def _barcode_pairs(
+    usable: list[dict[str, Any]], product_ids: dict[str, int]
+) -> list[tuple[int, str]]:
     """Distinct (product_id, barcode) pairs, sorted.
 
     A barcode may appear on many rows of the same product, so the pairs are
     deduplicated. It may also legitimately appear on two different products, so
     the set is keyed on the pair and never on the barcode alone.
     """
-    product_ids: dict[str, int] = {}
-    for row in usable:
-        name = str(row["Product Name"]).strip()
-        if name not in product_ids:
-            product_ids[name] = len(product_ids) + 1
     pairs: set[tuple[int, str]] = set()
     for row in usable:
         product_id = product_ids[str(row["Product Name"]).strip()]
