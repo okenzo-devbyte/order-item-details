@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     data_key_id: str = "v1"
     admin_username: str = "admin"
     admin_password: str = "change-me-now"
-    snapshot_path: str = "build/snapshot.enc"
+    snapshot_path: str = "snapshot.enc"
     disk_path: str = ""
     cookie_secure: bool = False
     allowed_hosts: str = "*"

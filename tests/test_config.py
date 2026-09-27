@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from api.config import Settings
 
 
@@ -6,6 +8,7 @@ def test_defaults_are_dev_safe():
     assert settings.cookie_secure is False
     assert settings.persistent is False
     assert settings.access_ttl_minutes == 15
+    assert settings.snapshot_file == Path("snapshot.enc")
 
 
 def test_disk_path_makes_it_persistent(tmp_path):
