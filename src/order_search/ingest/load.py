@@ -32,12 +32,17 @@ VIEW_COLUMNS = {
 
 
 def load_into_version(
-    database, rows: list[dict[str, Any]], version: int
+    database,
+    rows: list[dict[str, Any]],
+    version: int,
+    source_filename: str = "load",
 ) -> TransformedData:
     """Fills the `{table}_v{version}` tables and repoints the views at them.
 
-    The views move only after every copy has landed, so a failure anywhere in
-    this function leaves the previous version serving traffic.
+    The version tables are written and the views re-pointed in one transaction,
+    so a failure anywhere in this function leaves the previous version serving
+    traffic with its ledger row intact. The versioned CREATE TABLE statements
+    run outside it because they are idempotent and cheap.
     """
     data = transform(rows)
     item = database.schema_item
@@ -45,48 +50,69 @@ def load_into_version(
 
     for ddl in _version_ddl(version, item, sales).values():
         database.execute_script(ddl)
-    database.run(f'TRUNCATE "{item}"."products_v{version}" CASCADE')
-    database.run(f'TRUNCATE "{item}"."product_barcodes_v{version}" CASCADE')
-    database.run(f'TRUNCATE "{sales}"."customers_v{version}" CASCADE')
-    database.run(f'TRUNCATE "{sales}"."orders_v{version}" CASCADE')
-    database.run(f'TRUNCATE "{sales}"."order_items_v{version}" CASCADE')
 
-    database.copy(f'"{item}"."products_v{version}"', PRODUCT_COLUMNS, data.products)
-    database.copy(f'"{sales}"."customers_v{version}"', CUSTOMER_COLUMNS, data.customers)
-    database.copy(f'"{sales}"."orders_v{version}"', ORDER_COLUMNS, data.orders)
-    database.copy(
-        f'"{sales}"."order_items_v{version}"', ORDER_ITEM_COLUMNS, data.order_items
-    )
-    database.copy(
-        f'"{item}"."product_barcodes_v{version}"', BARCODE_COLUMNS, data.barcodes
-    )
-
-    for name, columns in VIEW_COLUMNS.items():
-        schema = item if name in ("products", "product_barcodes") else sales
-        database.execute_script(
-            f'CREATE OR REPLACE VIEW "{schema}"."{name}" AS'
-            f" SELECT {columns} FROM \"{schema}\".\"{name}_v{version}\";"
+    with database.transaction() as conn:
+        database.run(f'TRUNCATE "{item}"."products_v{version}" CASCADE', conn=conn)
+        database.run(
+            f'TRUNCATE "{item}"."product_barcodes_v{version}" CASCADE', conn=conn
+        )
+        database.run(f'TRUNCATE "{sales}"."customers_v{version}" CASCADE', conn=conn)
+        database.run(f'TRUNCATE "{sales}"."orders_v{version}" CASCADE', conn=conn)
+        database.run(
+            f'TRUNCATE "{sales}"."order_items_v{version}" CASCADE', conn=conn
         )
 
-    database.run(
-        f'UPDATE "{database.schema_app}"."data_versions" SET is_current = false'
-        " WHERE is_current"
-    )
-    database.run(
-        f'INSERT INTO "{database.schema_app}"."data_versions"'
-        " (version, source_filename, row_count, product_count, customer_count,"
-        " order_count, barcode_count, is_current)"
-        " VALUES (%s,%s,%s,%s,%s,%s,%s,true)",
-        (
-            version,
-            "load",
-            data.report.rows_imported,
-            data.report.products,
-            data.report.customers,
-            data.report.orders,
-            data.report.barcodes,
-        ),
-    )
+        database.copy(
+            f'"{item}"."products_v{version}"', PRODUCT_COLUMNS, data.products, conn=conn
+        )
+        database.copy(
+            f'"{sales}"."customers_v{version}"', CUSTOMER_COLUMNS, data.customers, conn=conn
+        )
+        database.copy(
+            f'"{sales}"."orders_v{version}"', ORDER_COLUMNS, data.orders, conn=conn
+        )
+        database.copy(
+            f'"{sales}"."order_items_v{version}"',
+            ORDER_ITEM_COLUMNS,
+            data.order_items,
+            conn=conn,
+        )
+        database.copy(
+            f'"{item}"."product_barcodes_v{version}"',
+            BARCODE_COLUMNS,
+            data.barcodes,
+            conn=conn,
+        )
+
+        for name, columns in VIEW_COLUMNS.items():
+            schema = item if name in ("products", "product_barcodes") else sales
+            database.execute_script(
+                f'CREATE OR REPLACE VIEW "{schema}"."{name}" AS'
+                f" SELECT {columns} FROM \"{schema}\".\"{name}_v{version}\";",
+                conn=conn,
+            )
+
+        database.run(
+            f'UPDATE "{database.schema_app}"."data_versions" SET is_current = false'
+            " WHERE is_current",
+            conn=conn,
+        )
+        database.run(
+            f'INSERT INTO "{database.schema_app}"."data_versions"'
+            " (version, source_filename, row_count, product_count, customer_count,"
+            " order_count, barcode_count, is_current)"
+            " VALUES (%s,%s,%s,%s,%s,%s,%s,true)",
+            (
+                version,
+                source_filename,
+                data.report.rows_imported,
+                data.report.products,
+                data.report.customers,
+                data.report.orders,
+                data.report.barcodes,
+            ),
+            conn=conn,
+        )
     return data
 
 
