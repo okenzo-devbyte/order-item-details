@@ -491,24 +491,40 @@ def split_statements(sql: str) -> list[str]:
     """Splits a migration file into single statements.
 
     psycopg's extended protocol refuses multiple statements in one execute, so
-    migrations are fed one at a time. Semicolons inside a dollar-quoted body
-    belong to the body, which is why this cannot be a plain `sql.split(";")`.
+    migrations are fed one at a time. A plain `sql.split(";")` cannot work: a
+    semicolon inside a dollar-quoted body belongs to the body. This scans
+    characters rather than lines, because `$$` can open or close anywhere,
+    including at the end of a line.
+
+    Tagged dollar quotes ($body$...) and a `$$` inside a string literal are not
+    handled. Neither appears in these migrations, and neither will appear
+    without someone writing a PL/pgSQL function, so this stays a scanner
+    rather than becoming a parser.
     """
     statements: list[str] = []
     buffer: list[str] = []
-    in_body = False
-    for line in sql.splitlines(keepends=True):
-        stripped = line.strip()
-        if stripped.startswith("$$"):
-            in_body = not in_body
-        buffer.append(line)
-        if not in_body and stripped.endswith(";"):
+    index = 0
+    length = len(sql)
+    while index < length:
+        if sql.startswith("$$", index):
+            closing = sql.find("$$", index + 2)
+            if closing == -1:
+                buffer.append(sql[index:])
+                index = length
+                break
+            buffer.append(sql[index:closing + 2])
+            index = closing + 2
+            continue
+        char = sql[index]
+        buffer.append(char)
+        if char == ";":
             statements.append("".join(buffer).strip().rstrip(";").strip())
             buffer = []
+        index += 1
     tail = "".join(buffer).strip()
     if tail:
         statements.append(tail)
-    return [s for s in statements if s]
+    return [statement for statement in statements if statement]
 
 
 class Database:
@@ -591,20 +607,28 @@ Append to `api/db.py`:
         the test suite build `t_item`, `t_sales` and `t_app` without a second
         copy of the schema.
         """
-        renames = {
-            '"app"': f'"{self.schema_app}"',
-            '"item"': f'"{self.schema_item}"',
-            '"sales"': f'"{self.schema_sales}"',
-        }
+        renames = _schema_renames(
+            self.schema_item, self.schema_sales, self.schema_app
+        )
         applied: list[str] = []
         for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-            sql = path.read_text(encoding="utf-8")
-            for original, replacement in renames.items():
-                sql = sql.replace(original, replacement)
-            self.execute_script(sql)
+            self.execute_script(
+                _rename_schemas(path.read_text(encoding="utf-8"), renames)
+            )
             applied.append(path.name)
         return applied
 ```
+
+The rename is word-boundary anchored on bare words, not on quoted identifiers,
+because the migration files contain no double quotes at all — a quoted match
+would silently change nothing and create `item`, `sales` and `app` in the real
+project during a test run. The boundary matters as much as the anchor:
+`item` is a prefix of the `item_remark` column, of `order_items` and of
+`idx_order_items_v1_product`.
+
+The one known limitation: a schema name appearing inside a string literal is
+rewritten too. A real SQL parser would be required to avoid that, and no
+migration does it today.
 
 - [ ] **Step 7: Run the splitter tests**
 
