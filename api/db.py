@@ -147,8 +147,9 @@ class Database:
                 "row_factory": dict_row,
                 # Transaction mode can re-bind a named prepared statement to a
                 # different backend, which turns a plan into a crash rather than
-                # a slow query. No server-side prepare at all.
-                "prepare_threshold": 0,
+                # a slow query. No server-side prepare at all: `None` disables
+                # it (0 would prepare every query on first use).
+                "prepare_threshold": None,
             },
             open=False,
         )
