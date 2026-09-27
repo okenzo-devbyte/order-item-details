@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+SQL_IDENTIFIER = r"^[A-Za-z_][A-Za-z0-9_]*$"
 
 
 class Settings(BaseSettings):
@@ -20,6 +22,21 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 60
     max_upload_bytes: int = 20 * 1024 * 1024
     database_url: str = ""
-    schema_item: str = Field(default="item", validation_alias="DB_SCHEMA_ITEM")
-    schema_sales: str = Field(default="sales", validation_alias="DB_SCHEMA_SALES")
-    schema_app: str = Field(default="app", validation_alias="DB_SCHEMA_APP")
+    # Env var names differ from field names (DB_SCHEMA_*); both are accepted.
+    # These three are interpolated into SQL identifiers, so they are restricted to
+    # what a bare Postgres identifier can be.
+    schema_item: str = Field(
+        default="item",
+        validation_alias=AliasChoices("DB_SCHEMA_ITEM", "SCHEMA_ITEM"),
+        pattern=SQL_IDENTIFIER,
+    )
+    schema_sales: str = Field(
+        default="sales",
+        validation_alias=AliasChoices("DB_SCHEMA_SALES", "SCHEMA_SALES"),
+        pattern=SQL_IDENTIFIER,
+    )
+    schema_app: str = Field(
+        default="app",
+        validation_alias=AliasChoices("DB_SCHEMA_APP", "SCHEMA_APP"),
+        pattern=SQL_IDENTIFIER,
+    )
