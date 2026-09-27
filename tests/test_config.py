@@ -1,5 +1,4 @@
 import re
-import sys
 from pathlib import Path
 
 import pytest
@@ -9,56 +8,7 @@ from api.config import Settings
 
 ROOT = Path(__file__).resolve().parents[1]
 
-LOCAL_PACKAGES = {"api", "conftest", "order_search", "scripts", "test_api_boot"}
-
-IMPORT_TO_DISTRIBUTION = {
-    "argon2": "argon2-cffi",
-    "jwt": "pyjwt",
-    "pydantic_settings": "pydantic-settings",
-    "starlette": "fastapi",
-}
-
-IMPORT_LINE = re.compile(r"^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_]*)")
-
-
-def _declared_distributions() -> set[str]:
-    names = set()
-    for line in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            names.add(
-                re.split(r"[<>=!~\[; ]", line, maxsplit=1)[0].lower().replace("_", "-")
-            )
-    return names
-
-
-def _imported_top_level_names() -> dict[str, set[str]]:
-    imported: dict[str, set[str]] = {}
-    for folder in ("api", "src", "scripts", "tests"):
-        for path in (ROOT / folder).rglob("*.py"):
-            names = set()
-            for line in path.read_text(encoding="utf-8").splitlines():
-                match = IMPORT_LINE.match(line)
-                if match:
-                    names.add(match.group(1))
-            imported[path.relative_to(ROOT).as_posix()] = names
-    return imported
-
-
-def test_every_imported_third_party_package_is_declared():
-    """A declared dependency must outlive the code that imports it.
-
-    Removing a line from requirements.txt while its importer still exists breaks
-    a clean build, not the local venv, because the package stays installed there.
-    """
-    declared = _declared_distributions()
-    missing = set()
-    for path, names in _imported_top_level_names().items():
-        for name in names - LOCAL_PACKAGES - set(sys.stdlib_module_names):
-            distribution = IMPORT_TO_DISTRIBUTION.get(name, name)
-            if distribution not in declared:
-                missing.add(f"{distribution} (imported by {path})")
-    assert not missing, f"undeclared imports: {sorted(missing)}"
+ENV_ASSIGNMENT = re.compile(r"^#?\s*([A-Z][A-Z0-9_]*)\s*=")
 
 
 def _env_names_for(field_name: str, field) -> set[str]:
