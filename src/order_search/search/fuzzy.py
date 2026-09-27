@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import sqlite3
-
 from rapidfuzz import fuzz, process
 
+from ..db import Reader, Tables
 from ..textnorm import norm
 
 # Stage 1 widens the pool cheaply; stage 2 confirms on the untouched base form.
@@ -27,7 +26,8 @@ SCORER = fuzz.WRatio
 
 def best_customers(
     query: str,
-    connection: sqlite3.Connection,
+    reader: Reader,
+    tables: Tables,
     limit: int = 5,
     score_cutoff: int = FINAL_CUTOFF,
 ) -> list[tuple[int, str, float]]:
@@ -40,9 +40,10 @@ def best_customers(
     normalized = norm(query)
     if not normalized:
         return []
-    rows = connection.execute(
-        "SELECT id, name_norm, name_fold_light FROM customers ORDER BY id"
-    ).fetchall()
+    rows = reader.all(
+        f"SELECT id, name_norm, name_fold_light FROM {tables.customers}"
+        " ORDER BY id"
+    )
     if not rows:
         return []
 
@@ -67,7 +68,8 @@ def best_customers(
 
 def best_products(
     query: str,
-    connection: sqlite3.Connection,
+    reader: Reader,
+    tables: Tables,
     limit: int = 5,
     stage1_cutoff: int = STAGE1_CUTOFF,
     final_cutoff: int = FINAL_CUTOFF,
@@ -81,9 +83,10 @@ def best_products(
     normalized = norm(query)
     if not normalized:
         return []
-    rows = connection.execute(
-        "SELECT id, name_norm, name_fold_heavy FROM products ORDER BY id"
-    ).fetchall()
+    rows = reader.all(
+        f"SELECT id, name_norm, name_fold_heavy FROM {tables.products}"
+        " ORDER BY id"
+    )
     if not rows:
         return []
 
