@@ -6,7 +6,7 @@
 
 **Architecture:** `src/order_search.search` stops importing `sqlite3` and instead talks to a `Reader` protocol with `one()` and `all()`. `api.db.Database` implements that protocol over a psycopg3 pool and also serves the writable `app` tables. Each import writes into fresh `{table}_v{n}` tables; five views point at the current version, so activating a new dataset is a single `CREATE OR REPLACE VIEW`.
 
-**Tech Stack:** Postgres 15 (Supabase), `psycopg[binary]` 3.2, `pg_trgm`, FastAPI, pytest.
+**Tech Stack:** Postgres 15 (Supabase), `psycopg[binary,pool]` 3.2, `pg_trgm`, FastAPI, pytest.
 
 **Design:** `docs/superpowers/specs/2026-09-27-supabase-vercel-redesign-design.md`
 
@@ -129,8 +129,12 @@ Expected: FAIL, `Settings` has no attribute `database_url`
 In `requirements.txt`, remove the `cryptography>=42` line and add:
 
 ```
-psycopg[binary]>=3.2
+psycopg[binary,pool]>=3.2
 ```
+
+The `pool` extra is not optional decoration: `ConnectionPool` ships in the
+separate `psycopg_pool` distribution, so without it `psycopg.ConnectionPool`
+does not exist and the app cannot start.
 
 Then install:
 
