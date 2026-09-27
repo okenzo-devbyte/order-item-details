@@ -27,14 +27,8 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _iso(moment: datetime) -> str:
-    return moment.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _parse_iso(text: str) -> datetime:
-    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(
-        tzinfo=timezone.utc
-    )
+def _tokens(schema: str) -> str:
+    return f'"{schema}"."refresh_tokens"'
 
 
 def encode_token(
@@ -74,11 +68,11 @@ def issue_session(db, secret, user, access_ttl, refresh_ttl) -> tuple[str, str]:
     refresh = encode_token(
         secret, user["id"], user["role"], REFRESH, refresh_ttl, jti=jti
     )
-    now = _now()
     db.run(
-        "INSERT INTO refresh_tokens (id, user_id, issued_at, expires_at,"
-        " last_used_at, revoked) VALUES (?,?,?,?,?,0)",
-        (jti, user["id"], _iso(now), _iso(now + refresh_ttl), _iso(now)),
+        f"INSERT INTO {_tokens(db.schema_app)}"
+        " (id, user_id, issued_at, expires_at, last_used_at, revoked)"
+        " VALUES (%s,%s,now(),now() + make_interval(secs => %s),now(),false)",
+        (jti, user["id"], refresh_ttl.total_seconds()),
     )
     return access, refresh
 
@@ -88,17 +82,19 @@ def rotate_refresh(
 ) -> tuple[str, str]:
     payload = decode_token(secret, token, REFRESH)
     jti = payload.get("jti")
-    row = db.query_one("SELECT * FROM refresh_tokens WHERE id = ?", (jti,))
+    row = db.one(
+        f"SELECT * FROM {_tokens(db.schema_app)} WHERE id = %s", (jti,)
+    )
     if row is None:
         raise InvalidToken("refresh token unknown")
-    claimed = db.query_one(
-        "UPDATE refresh_tokens SET revoked = 1 WHERE id = ? AND revoked = 0"
-        " RETURNING id",
+    claimed = db.one(
+        f"UPDATE {_tokens(db.schema_app)} SET revoked = true"
+        " WHERE id = %s AND revoked = false RETURNING id",
         (jti,),
     )
     if claimed is None:
         raise InvalidToken("refresh token revoked")
-    if _now() - _parse_iso(row["last_used_at"]) > idle_timeout:
+    if _now() - row["last_used_at"] > idle_timeout:
         raise InvalidToken("session idle timeout")
     user = users.get_by_id(db, int(payload["sub"]))
     if user is None or not user["is_active"]:
@@ -115,11 +111,17 @@ def revoke_refresh(db, secret, token: str | None) -> None:
         return
     jti = payload.get("jti")
     if jti:
-        db.run("UPDATE refresh_tokens SET revoked = 1 WHERE id = ?", (jti,))
+        db.run(
+            f"UPDATE {_tokens(db.schema_app)} SET revoked = true WHERE id = %s",
+            (jti,),
+        )
 
 
 def revoke_all_for_user(db, user_id: int) -> None:
-    db.run("UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?", (user_id,))
+    db.run(
+        f"UPDATE {_tokens(db.schema_app)} SET revoked = true WHERE user_id = %s",
+        (user_id,),
+    )
 
 
 def set_auth_cookies(response: Response, settings, access: str, refresh: str) -> None:
