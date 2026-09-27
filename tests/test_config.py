@@ -72,6 +72,15 @@ def _env_names_for(field_name: str, field) -> set[str]:
 
 ENV_ASSIGNMENT = re.compile(r"^#?\s*([A-Z][A-Z0-9_]*)\s*=")
 
+CREDENTIAL_VARIABLES = {
+    "SECRET_KEY",
+    "ADMIN_PASSWORD",
+    "DATABASE_URL",
+    "TEST_DATABASE_URL",
+}
+
+PLACEHOLDER_MARKERS = ("PASSWORD", "PROJECT", "REGION")
+
 
 def _documented_env_names(text: str) -> set[str]:
     """Every variable name written down, commented out or not.
@@ -85,6 +94,19 @@ def _documented_env_names(text: str) -> set[str]:
         if match:
             names.add(match.group(1))
     return names
+
+
+def _active_assignments(text: str) -> list[tuple[str, str]]:
+    """The (name, value) pairs a developer gets by copying this file verbatim."""
+    pairs = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        name, _, value = stripped.partition("=")
+        if value:
+            pairs.append((name.strip(), value.strip()))
+    return pairs
 
 
 def test_env_example_documents_every_setting():
@@ -101,6 +123,15 @@ def test_env_example_documents_every_setting():
         missing |= _env_names_for(field_name, field) - documented
     assert not missing, f"undocumented in .env.example: {sorted(missing)}"
 
+
+def test_env_example_has_no_active_empty_value():
+    """An active blank hands the next developer a silent weak configuration.
+
+    `SECRET_KEY=` would reach the app as an empty key, which the boot guard at
+    api/main.py does not catch because it only compares against the one literal
+    default. Commented out, the line is documentation and nothing else.
+    """
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
     blank = []
     for line in text.splitlines():
         stripped = line.strip()
@@ -112,20 +143,37 @@ def test_env_example_documents_every_setting():
     assert not blank, f"active but empty, comment these out instead: {sorted(blank)}"
 
 
-def test_env_example_holds_no_credential():
+def test_env_example_only_ever_shows_a_placeholder_credential():
+    """A credential pasted here is a credential committed to git.
+
+    It cannot tell a real secret from a placeholder that happens to avoid the
+    marker words, so it only enforces that the sensitive names are either
+    commented out or hold an obvious placeholder.
+    """
     text = (ROOT / ".env.example").read_text(encoding="utf-8")
-    for line in text.splitlines():
-        _, _, value = line.partition("=")
-        if "://" in value:
-            assert "PASSWORD" in value.upper() or "@" not in value, (
-                f"possible real credential: {line}"
+    for name, value in _active_assignments(text):
+        if name in CREDENTIAL_VARIABLES:
+            assert any(marker in value.upper() for marker in PLACEHOLDER_MARKERS), (
+                f"{name} is active in .env.example; keep it commented out or "
+                f"replace the value with a placeholder"
             )
 
 
 def test_defaults_are_dev_safe():
-    settings = Settings()
-    assert settings.cookie_secure is False
-    assert settings.access_ttl_minutes == 15
+    fields = Settings.model_fields
+    assert fields["cookie_secure"].default is False
+    assert fields["access_ttl_minutes"].default == 15
+
+
+def test_declared_defaults_ignore_the_environment(monkeypatch):
+    """A developer who sets COOKIE_SECURE must not see a red suite.
+
+    Reading the default off the model rather than off a live instance is what
+    makes that true; `Settings()` resolves the process environment and `.env`,
+    and `.env.example` ships `COOKIE_SECURE=true`.
+    """
+    monkeypatch.setenv("COOKIE_SECURE", "true")
+    assert Settings.model_fields["cookie_secure"].default is False
 
 
 def test_schema_defaults():
