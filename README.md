@@ -135,14 +135,18 @@ let Render run it as a prebuilt image.
 
 ```powershell
 $env:RENDER_API_KEY = "<your render api key>"
+$env:REGISTRY_USERNAME = "<docker hub username>"
+$env:REGISTRY_TOKEN = "<docker hub access token>"
 $env:DATA_KEY = Get-Content build\data_key.txt
 $env:ADMIN_PASSWORD = "<your admin password>"
 .\.venv\Scripts\python.exe scripts\deploy_render.py --image "docker.io/<username>/order-search:latest"
 ```
 
 The script creates the service, or updates it when one of that name already
-exists, and generates `SECRET_KEY` unless you supply one. Add `--dry-run` to
-print the request body without calling the API.
+exists, and generates `SECRET_KEY` unless you supply one. The registry
+credential is created once and reused; drop `REGISTRY_USERNAME` and
+`REGISTRY_TOKEN` when the image is public. Add `--dry-run` to print the request
+body without calling the API.
 
 ### Security notes
 

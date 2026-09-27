@@ -35,6 +35,44 @@ def test_patch_keeps_only_image_and_details():
     }
 
 
+def test_private_image_carries_a_registry_credential():
+    payload = build_payload(
+        "order-search", "own-1", "docker.io/me/order-search:latest", "free",
+        "/healthz", {}, "cred-9",
+    )
+    assert payload["image"] == {
+        "imagePath": "docker.io/me/order-search:latest",
+        "ownerId": "own-1",
+        "registryCredentialId": "cred-9",
+    }
+
+
+def test_half_a_registry_credential_is_refused():
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT / "src")
+    env["PYTHONIOENCODING"] = "utf-8"
+    env.pop("RENDER_API_KEY", None)
+    env["DATA_KEY"] = KEY
+    env["ADMIN_PASSWORD"] = "a-long-admin-password"
+    env["REGISTRY_USERNAME"] = "ohkenzo"
+    env.pop("REGISTRY_TOKEN", None)
+    result = subprocess.run(
+        [
+            str(PYTHON),
+            str(ROOT / "scripts" / "deploy_render.py"),
+            "--image",
+            "docker.io/ohkenzo/order-search:latest",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        cwd=ROOT,
+        env=env,
+    )
+    assert result.returncode == 2
+    assert "registry-token" in result.stderr
+
+
 def test_dry_run_emits_valid_json_without_a_key(tmp_path):
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT / "src")
