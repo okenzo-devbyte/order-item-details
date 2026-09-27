@@ -35,3 +35,17 @@ def test_snapshot_settings_are_gone():
     assert "data_key" not in fields
     assert "snapshot_path" not in fields
     assert "disk_path" not in fields
+
+
+def test_a_settings_round_trip_preserves_the_schema_names(monkeypatch):
+    monkeypatch.setenv("DB_SCHEMA_ITEM", "t_item")
+    original = Settings()
+    monkeypatch.delenv("DB_SCHEMA_ITEM")
+    copied = Settings(**original.model_dump())
+    assert copied.schema_item == "t_item"
+    assert copied.schema_sales == original.schema_sales
+    assert copied.schema_app == original.schema_app
+
+
+def test_the_field_name_also_works():
+    assert Settings(schema_item="custom").schema_item == "custom"
