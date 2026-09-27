@@ -17,8 +17,8 @@ MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 # piece. This copy exists because migrate() has to consult the ledger before
 # any migration file has run, including on a database with no schemas at all.
 LEDGER_DDL = """\
-CREATE SCHEMA IF NOT EXISTS "app";
-CREATE TABLE IF NOT EXISTS "app"."schema_migrations" (
+CREATE SCHEMA IF NOT EXISTS app;
+CREATE TABLE IF NOT EXISTS app.schema_migrations (
     name       text PRIMARY KEY,
     applied_at timestamptz NOT NULL DEFAULT now()
 );
