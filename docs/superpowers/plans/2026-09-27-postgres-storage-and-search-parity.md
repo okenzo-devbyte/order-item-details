@@ -492,18 +492,16 @@ MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 
 
 def split_statements(sql: str) -> list[str]:
-    """Splits a migration file into single statements.
+    """SUPERSEDED. Read `api/db.py`. The version committed there also tracks
+    line comments, block comments and string literals, so a semicolon in
+    `-- a; b` or in `'x; y'` no longer splits a statement, and a comment-only
+    fragment is dropped instead of being sent to the server. The two limits that
+    remain there, both documented in its docstring, are a tagged dollar quote
+    and a `$$` inside a string literal.
 
-    psycopg's extended protocol refuses multiple statements in one execute, so
-    migrations are fed one at a time. A plain `sql.split(";")` cannot work: a
-    semicolon inside a dollar-quoted body belongs to the body. This scans
-    characters rather than lines, because `$$` can open or close anywhere,
-    including at the end of a line.
-
-    Tagged dollar quotes ($body$...) and a `$$` inside a string literal are not
-    handled. Neither appears in these migrations, and neither will appear
-    without someone writing a PL/pgSQL function, so this stays a scanner
-    rather than becoming a parser.
+    The original text is kept below because it shows the problem this solves:
+    a semicolon only ends a statement when it stands on its own, so this scans
+    characters rather than splitting on the character.
     """
     statements: list[str] = []
     buffer: list[str] = []
@@ -532,6 +530,26 @@ def split_statements(sql: str) -> list[str]:
 
 
 class Database:
+    """SUPERSEDED. Read `api/db.py` instead; the copy below is historical and
+    is wrong in four ways, all of which a code review caught after it shipped.
+
+    What the committed implementation does that this does not:
+
+    1. `from psycopg_pool import ConnectionPool`, not `psycopg.ConnectionPool`.
+       The attribute does not exist on `psycopg`; the pool ships in a separate
+       distribution behind the `pool` extra. The version below raises
+       `AttributeError` on every `Database(...)`.
+    2. `one`, `all`, `run`, `copy` and `execute_script` take an optional
+       `conn=None`. Without it an import cannot be made atomic, because
+       `pool.connection()` commits on exit and the activate sequence is
+       repoint-the-views, clear-the-old-flag, set-the-new-flag.
+    3. `migrate()` consults the `app.schema_migrations` ledger and applies one
+       file per transaction together with its ledger row. The version below
+       re-runs everything on every boot and is safe only because every
+       statement happens to be idempotent.
+    4. `__enter__` and `__exit__` exist, so `close()` is not something a caller
+       has to remember.
+    """
     """Every database call the application makes.
 
     The pool is created once per process and shared. `one` and `all` return
@@ -603,6 +621,10 @@ class Database:
 Append to `api/db.py`:
 
 ```python
+    # SUPERSEDED. Read `api/db.py`. The committed migrate() adds a ledger and a
+    # transaction boundary that this version lacks, and applies one file per
+    # transaction so a crash leaves a file unapplied rather than applied and
+    # unrecorded.
     def migrate(self) -> list[str]:
         """Applies every migration file in name order and returns the names.
 
