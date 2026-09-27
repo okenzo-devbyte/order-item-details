@@ -50,6 +50,7 @@ async def lifespan(app: FastAPI):
     app.state.rate_limiter = RateLimiter(
         database, settings.rate_limit_per_minute
     )
+    app.state.rate_limiter.prune()
     if settings.admin_password == "change-me-now":
         logger.warning(
             "bootstrap admin uses the default password; change it before use"

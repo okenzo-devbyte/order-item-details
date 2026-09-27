@@ -46,3 +46,29 @@ def test_the_budget_resets_in_the_next_window(client_db):
     assert limiter.allow("user:9", now=first) is True
     assert limiter.allow("user:9", now=first) is False
     assert limiter.allow("user:9", now=second) is True
+
+
+def test_a_custom_window_size_is_honoured(client_db):
+    from datetime import datetime, timezone
+
+    limiter = RateLimiter(client_db, limit=1, window_seconds=30)
+    first = datetime(2026, 9, 27, 10, 0, 15, tzinfo=timezone.utc)
+    second = datetime(2026, 9, 27, 10, 0, 45, tzinfo=timezone.utc)
+    assert limiter.allow("user:10", now=first) is True
+    assert limiter.allow("user:10", now=first) is False
+    assert limiter.allow("user:10", now=second) is True
+
+
+def test_prune_removes_stale_buckets(client_db):
+    from datetime import datetime, timedelta, timezone
+
+    limiter = RateLimiter(client_db, limit=1, window_seconds=60)
+    old = datetime(2026, 9, 27, 8, 0, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 9, 27, 10, 0, 0, tzinfo=timezone.utc)
+    assert limiter.allow("user:11", now=old) is True
+    limiter.prune(older_than=now)
+    row = client_db.one(
+        f'SELECT count(*) AS n FROM "{client_db.schema_app}"."rate_buckets"'
+        f" WHERE key = 'user:11'"
+    )
+    assert row["n"] == 0

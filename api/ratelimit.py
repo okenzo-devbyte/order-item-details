@@ -7,8 +7,11 @@ class RateLimiter:
     """Fixed-window limiter whose counters live in the database.
 
     An in-process counter is per warm instance on a serverless platform, so
-    `limit` requests per minute would quietly become `limit` times the number
+    `limit` requests per window would quietly become `limit` times the number
     of instances. One upsert per request is the price of a limit that holds.
+
+    The bucket boundary is aligned to the window, so a caller that supplies a
+    different `now` inside the same window still lands in the same bucket.
     """
 
     def __init__(self, database, limit: int, window_seconds: int = 60) -> None:
@@ -18,7 +21,9 @@ class RateLimiter:
 
     def allow(self, key: str, now: datetime | None = None) -> bool:
         moment = now or datetime.now(timezone.utc)
-        window = moment.replace(second=0, microsecond=0)
+        epoch = int(moment.timestamp())
+        window_start = epoch - (epoch % self.window)
+        window = datetime.fromtimestamp(window_start, tz=timezone.utc)
         table = f'"{self.db.schema_app}"."rate_buckets"'
         row = self.db.one(
             f"INSERT INTO {table} (key, window_start, hits) VALUES (%s, %s, 1)"
@@ -28,3 +33,19 @@ class RateLimiter:
             (key, window),
         )
         return row is not None and row["hits"] <= self.limit
+
+    def prune(self, older_than: datetime | None = None) -> int:
+        """Deletes stale buckets so the table cannot grow without bound.
+
+        One row per (key, window) accumulates forever on a busy service, so the
+        lifespan calls this once per warm start. `older_than` defaults to two
+        windows back, which keeps the current window and the one before it.
+        """
+        moment = older_than or datetime.now(timezone.utc)
+        epoch = int(moment.timestamp())
+        cutoff = epoch - 2 * self.window
+        table = f'"{self.db.schema_app}"."rate_buckets"'
+        return self.db.run(
+            f"DELETE FROM {table} WHERE window_start < %s",
+            (datetime.fromtimestamp(cutoff, tz=timezone.utc),),
+        )
