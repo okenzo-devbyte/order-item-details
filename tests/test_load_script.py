@@ -10,9 +10,12 @@ PYTHON = ROOT / ".venv" / "Scripts" / "python.exe"
 
 def test_the_script_reports_the_import_counts(tmp_path, client_db):
     """client_db guarantees the t_ schemas exist before the subprocess loads."""
+    from conftest import TEST_URL
+
     env = dict(os.environ)
     env["PYTHONPATH"] = str(ROOT / "src")
     env["PYTHONIOENCODING"] = "utf-8"
+    env["DATABASE_URL"] = TEST_URL
     env["DB_SCHEMA_ITEM"] = "t_item"
     env["DB_SCHEMA_SALES"] = "t_sales"
     env["DB_SCHEMA_APP"] = "t_app"
