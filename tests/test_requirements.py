@@ -14,6 +14,7 @@ IMPORT_TO_DISTRIBUTION = {
     "argon2": "argon2-cffi",
     "jwt": "pyjwt",
     "pydantic_settings": "pydantic-settings",
+    "psycopg_pool": "psycopg",
 }
 
 DECLARED_NEVER_IMPORTED_BY_NAME = {

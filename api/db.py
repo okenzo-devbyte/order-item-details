@@ -4,8 +4,10 @@ import re
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
-import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+
+from order_search.db import Tables
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 
@@ -77,26 +79,42 @@ class Database:
     The pool is created once per process and shared. `one` and `all` return
     plain dicts so calling code keeps the `row["col"]` style it had with
     sqlite3.Row.
+
+    The pool holds a single connection, so an import owns the whole service for
+    the length of its COPY. That is deliberate: the admin path gets its own
+    `Database` when the resumable import lands, so a long import cannot stall a
+    search request. Nothing in the request path is written to, so the read pool
+    and the import pool do not contend.
     """
 
     def __init__(self, dsn: str, schema_item: str, schema_sales: str, schema_app: str):
-        self.pool = psycopg.ConnectionPool(
+        self.pool = ConnectionPool(
             dsn,
             min_size=0,
+            # Supabase runs PgBouncer in transaction mode, which multiplexes
+            # many client connections onto one backend. One app-side connection
+            # is the conservative side of that trade, not a typo.
             max_size=1,
-            kwargs={"row_factory": dict_row, "prepare_threshold": 0},
+            kwargs={
+                "row_factory": dict_row,
+                # Transaction mode can re-bind a named prepared statement to a
+                # different backend, which turns a plan into a crash rather than
+                # a slow query. No server-side prepare at all.
+                "prepare_threshold": 0,
+            },
             open=False,
         )
         self.pool.open()
         self.schema_item = schema_item
         self.schema_sales = schema_sales
         self.schema_app = schema_app
+        self.tables = Tables.from_schemas(schema_item, schema_sales)
 
-    @property
-    def tables(self):
-        from order_search.db import Tables
+    def __enter__(self) -> "Database":
+        return self
 
-        return Tables.from_schemas(self.schema_item, self.schema_sales)
+    def __exit__(self, *exc_info: Any) -> None:
+        self.close()
 
     def one(self, sql: str, params: Sequence[Any] = ()) -> dict[str, Any] | None:
         with self.pool.connection() as conn:

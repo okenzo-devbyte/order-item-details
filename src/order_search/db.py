@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol, Sequence
+from typing import Any, Protocol, Sequence, runtime_checkable
 
 
+@runtime_checkable
 class Reader(Protocol):
     """The only database surface the search core is allowed to use.
 
