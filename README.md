@@ -80,8 +80,57 @@ matched against.
 - `Original Expected Date` is a delivery window, not an order date, and the
   sample file uses a single date for every row.
 
-## Not in this plan
+## Web service
 
-The web service, login, encryption, audit log and PWA are in a separate plan.
-This code has no network surface, which is why it can be tested with plain
-`pytest`.
+The API and PWA put the same search core behind HTTP.
+
+### Build the encrypted snapshot
+
+```powershell
+$env:DATA_KEY = .\.venv\Scripts\python.exe -c "import base64,os;print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+.\.venv\Scripts\python.exe scripts\build_snapshot.py sample_order_data_1000_records.xlsx --out snapshot.enc
+```
+
+Keep `DATA_KEY` secret. `snapshot.enc` is ciphertext and may be committed.
+
+### Run locally
+
+```powershell
+$env:PYTHONPATH = "src"
+$env:DATA_KEY = Get-Content build\data_key.txt
+$env:SECRET_KEY = "dev-secret-change-me-please-32-bytes"
+$env:ADMIN_USERNAME = "admin"
+$env:ADMIN_PASSWORD = "change-me-now"
+.\.venv\Scripts\python.exe -m uvicorn api.main:app --reload
+```
+
+Open `http://127.0.0.1:8000`, log in, search. The API lives under `/api/v1`
+and `GET /healthz` reports whether the snapshot loaded.
+
+### Provision another admin
+
+```powershell
+.\.venv\Scripts\python.exe scripts\make_admin.py --db "$env:TEMP\order-search\app.db" --username boss --password password123
+```
+
+### Deploy to Render
+
+Push the repository, create the service from `render.yaml`, then set `DATA_KEY`
+(the value used to build `snapshot.enc`), `ADMIN_PASSWORD` and `SECRET_KEY` in
+the dashboard. Free instances have no persistent disk, so `users` and
+`audit_log` reset on redeploy; attach a disk and set `DISK_PATH` to keep them.
+
+### Security notes
+
+- Search and suggest are `POST` so customer text never lands in a URL.
+- `snapshot.enc` is decrypted into memory only. The FTS index is rebuilt after
+  deserialization so a damaged index still answers queries.
+- Sessions use httpOnly access/refresh cookies with rotation; the CSRF token is
+  read by the app and echoed in the `X-CSRF-Token` header.
+- The service worker caches the app shell only, never `/api/`.
+
+## Testing the web service
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest
+```
