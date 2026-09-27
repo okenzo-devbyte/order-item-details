@@ -1,5 +1,10 @@
 CREATE SCHEMA IF NOT EXISTS app;
 
+CREATE TABLE IF NOT EXISTS app.schema_migrations (
+    name       text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS app.users (
     id            bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     username      text NOT NULL UNIQUE,

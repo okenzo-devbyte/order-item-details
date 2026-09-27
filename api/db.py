@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Iterator, Sequence
 
+from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from order_search.db import Tables
+from order_search.db import Tables, app_table
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
+
+# The ledger is also declared in 002_app.sql, so the app schema reads as one
+# piece. This copy exists because migrate() has to consult the ledger before
+# any migration file has run, including on a database with no schemas at all.
+LEDGER_DDL = """\
+CREATE SCHEMA IF NOT EXISTS "app";
+CREATE TABLE IF NOT EXISTS "app"."schema_migrations" (
+    name       text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now()
+);
+"""
 
 
 def split_statements(sql: str) -> list[str]:
@@ -116,55 +129,127 @@ class Database:
     def __exit__(self, *exc_info: Any) -> None:
         self.close()
 
-    def one(self, sql: str, params: Sequence[Any] = ()) -> dict[str, Any] | None:
+    @contextmanager
+    def _connection(self, conn: Connection | None) -> Iterator[Connection]:
+        """The caller's connection, or a pooled one this call owns.
+
+        A pooled connection commits when its block ends, which is why a caller
+        that supplies its own connection is responsible for the commit.
+        """
+        if conn is not None:
+            yield conn
+            return
+        with self.pool.connection() as pooled:
+            yield pooled
+
+    @contextmanager
+    def transaction(self) -> Iterator[Connection]:
+        """Runs several calls as one transaction.
+
+        `pool.connection()` commits as soon as it is returned to the pool, so
+        each call is a transaction of its own by default. Activating an imported
+        dataset is not one statement but has to be all of nothing: repoint the
+        views, clear the old current flag, set the new one. Committed separately
+        a crash in the middle leaves the views serving a version that no row
+        calls current, so the import path composes its writes through here.
+        """
         with self.pool.connection() as conn:
-            with conn.cursor() as cur:
+            with conn.transaction():
+                yield conn
+
+    def one(
+        self, sql: str, params: Sequence[Any] = (), conn: Connection | None = None
+    ) -> dict[str, Any] | None:
+        with self._connection(conn) as active:
+            with active.cursor() as cur:
                 cur.execute(sql, params or None)
                 return cur.fetchone()
 
-    def all(self, sql: str, params: Sequence[Any] = ()) -> list[dict[str, Any]]:
-        with self.pool.connection() as conn:
-            with conn.cursor() as cur:
+    def all(
+        self, sql: str, params: Sequence[Any] = (), conn: Connection | None = None
+    ) -> list[dict[str, Any]]:
+        with self._connection(conn) as active:
+            with active.cursor() as cur:
                 cur.execute(sql, params or None)
                 return list(cur.fetchall() or [])
 
-    def run(self, sql: str, params: Sequence[Any] = ()) -> int:
-        with self.pool.connection() as conn:
-            with conn.cursor() as cur:
+    def run(
+        self, sql: str, params: Sequence[Any] = (), conn: Connection | None = None
+    ) -> int:
+        with self._connection(conn) as active:
+            with active.cursor() as cur:
                 cur.execute(sql, params or None)
                 return cur.rowcount
 
-    def copy(self, table: str, columns: Sequence[str], rows: Iterable[Sequence[Any]]) -> int:
+    def copy(
+        self,
+        table: str,
+        columns: Sequence[str],
+        rows: Iterable[Sequence[Any]],
+        conn: Connection | None = None,
+    ) -> int:
         column_list = ", ".join(columns)
         statement = f"COPY {table} ({column_list}) FROM STDIN"
         written = 0
-        with self.pool.connection() as conn:
-            with conn.cursor() as cur:
+        with self._connection(conn) as active:
+            with active.cursor() as cur:
                 with cur.copy(statement) as copy:
                     for row in rows:
                         copy.write_row(tuple(row))
                         written += 1
         return written
 
-    def execute_script(self, sql: str) -> None:
-        with self.pool.connection() as conn:
-            with conn.cursor() as cur:
+    def execute_script(self, sql: str, conn: Connection | None = None) -> None:
+        with self._connection(conn) as active:
+            with active.cursor() as cur:
                 for statement in split_statements(sql):
                     cur.execute(statement)
 
+    def _migration_files(self) -> list[Path]:
+        """The migration files, or a loud failure explaining their absence.
+
+        `glob` on a directory that is not there yields nothing, so without this
+        the service would boot and every query would fail on a missing relation,
+        which points at the schema rather than at the packaging.
+        """
+        if not MIGRATIONS_DIR.is_dir():
+            raise FileNotFoundError(f"the migrations directory is missing: {MIGRATIONS_DIR}")
+        paths = sorted(MIGRATIONS_DIR.glob("*.sql"))
+        if not paths:
+            raise FileNotFoundError(f"no migration file to apply in {MIGRATIONS_DIR}")
+        return paths
+
     def migrate(self) -> list[str]:
-        """Applies every migration file in name order and returns the names.
+        """Applies every migration the ledger does not already record.
+
+        Returns the names this call applied, in order. A name already in
+        `app.schema_migrations` is skipped, so the return value is the work this
+        boot did and not the work the schema already holds.
 
         The files are written against the default schema names, so each one is
         rewritten onto the configured names before it runs. That is what lets
         the test suite build `t_item`, `t_sales` and `t_app` without a second
         copy of the schema.
+
+        A file and its ledger row are written in one transaction, so a crash
+        leaves the file unapplied rather than applied and unrecorded.
         """
         renames = _schema_renames(self.schema_item, self.schema_sales, self.schema_app)
+        paths = self._migration_files()
+        ledger = app_table(self.schema_app, "schema_migrations")
+        with self._connection(None) as conn:
+            self.execute_script(_rename_schemas(LEDGER_DDL, renames), conn=conn)
+            recorded = {
+                row["name"] for row in self.all(f"SELECT name FROM {ledger}", conn=conn)
+            }
         applied: list[str] = []
-        for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+        for path in paths:
+            if path.name in recorded:
+                continue
             sql = _rename_schemas(path.read_text(encoding="utf-8"), renames)
-            self.execute_script(sql)
+            with self.transaction() as conn:
+                self.execute_script(sql, conn=conn)
+                self.run(f"INSERT INTO {ledger} (name) VALUES (%s)", (path.name,), conn=conn)
             applied.append(path.name)
         return applied
 
