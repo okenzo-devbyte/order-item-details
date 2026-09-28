@@ -1,10 +1,12 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { normalizeThai } from '../normalize.js';
 import { aggregateProducts } from '../aggregate.js';
 
 let _indexCache = null;
-const CACHE_FILE = join(process.cwd(), '.cache', 'customer_index.json');
+const CACHE_DIR = process.env.VERCEL ? tmpdir() : join(process.cwd(), '.cache');
+const CACHE_FILE = join(CACHE_DIR, 'customer_index.json');
 
 async function getOrBuildCustomerIndex(sb) {
   // 1. Get latest import timestamp to see if data changed
@@ -89,8 +91,8 @@ async function getOrBuildCustomerIndex(sb) {
   };
 
   try {
-    if (!existsSync(join(process.cwd(), '.cache'))) {
-      mkdirSync(join(process.cwd(), '.cache'), { recursive: true });
+    if (!existsSync(CACHE_DIR)) {
+      mkdirSync(CACHE_DIR, { recursive: true });
     }
     writeFileSync(CACHE_FILE, JSON.stringify(_indexCache));
   } catch (_) {}
