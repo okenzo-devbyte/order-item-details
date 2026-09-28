@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>เข้าสู่ระบบ — ค้นกลุ่มสินค้า</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="auth-body">
+  <main class="auth-card">
+    <div class="brand">
+      <div class="logo">🛍️</div>
+      <h1>ค้นกลุ่มสินค้า</h1>
+      <p>ระบบค้นข้อมูลลูกค้าและสินค้า</p>
+    </div>
+    <form id="login-form" novalidate>
+      <label for="username">ชื่อผู้ใช้</label>
+      <input id="username" name="username" autocomplete="username" required autofocus>
+      <label for="password">รหัสผ่าน</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit" class="btn btn-primary btn-block" id="submit-btn">เข้าสู่ระบบ</button>
+      <p class="form-error" id="form-error" hidden></p>
+    </form>
+  </main>
+  <script type="module" src="/js/login.js"></script>
+</body>
+</html>
