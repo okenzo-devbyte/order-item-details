@@ -39,6 +39,21 @@ test('import handler rejects invalid rows without touching data', async () => {
   assert.equal((await r.getStats()).order_count, 1);
 });
 
+test('import handler skips invalid rows and reports them', async () => {
+  const a = createMemoryAdapter();
+  const r = createRepository(a);
+  const good = { 'Order Number': 'A', 'Item Id': '1', 'Store Code': '106', 'Product Name': 'P', 'Customer Name': 'C', 'Original Expected Date': '28-Sep-2026 - 28-Sep-2026', 'Dept': '8', 'Class': '312', 'Subclass': '29', 'Item Remark': '', 'VIP Customer Remarks': '', 'VIP Customer Groups': '' };
+  const bad = { ...good, 'Item Id': '' };
+  const { req, res } = makePostReq('/api/admin/import?mode=replace&filename=t.xlsx', { rows: [good, bad] });
+  await importHandler(req, res, r);
+  const body = JSON.parse(res.body);
+  assert.equal(body.ok, true);
+  assert.equal(body.data.row_count, 1);
+  assert.equal(body.data.skipped.length, 1);
+  assert.equal(body.data.skipped[0].field, 'Item Id');
+  assert.equal((await r.getStats()).order_count, 1);
+});
+
 test('clear handler requires confirm', async () => {
   const a = createMemoryAdapter();
   a.seedOrderItems([{ order_number: 'X', item_id: '1', product_name: 'P', customer_name: 'C', expected_from: '2026-01-01', expected_to: '2026-01-01', dept: 1, class: 2, subclass: 3 }]);

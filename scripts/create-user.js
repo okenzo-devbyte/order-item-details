@@ -13,7 +13,7 @@ if (!password) {
   process.exit(1);
 }
 const cfg = loadConfig();
-const sb = createClient(cfg.supabaseUrl, cfg.supabaseKey);
+const sb = createClient(cfg.supabaseUrl, cfg.supabaseKey, { db: { schema: 'order_item' } });
 const { error } = await sb.from('users').insert({ username, password_hash: hashPassword(password), role });
 if (error) {
   console.error('Failed:', error.message);

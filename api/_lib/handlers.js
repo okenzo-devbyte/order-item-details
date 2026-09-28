@@ -51,16 +51,20 @@ export async function statsHandler(req, res, repo) {
 export async function importHandler(req, res, repo) {
   if (req.method !== 'POST') return fail(res, 405, 'method_not_allowed', 'วิธีไม่ถูก');
   const url = new URL(req.url, 'http://local');
-  const mode = url.searchParams.get('mode') === 'append' ? 'append' : 'replace';
+  const mode = 'replace'; // Always replace existing data
   const filename = String(url.searchParams.get('filename') ?? 'upload.xlsx').slice(0, 255);
   const body = await readJson(req);
   const rows = body.rows;
-  const { errors } = validateImportRows(rows);
-  if (errors.length) {
-    return fail(res, 422, 'bad_file', `ไฟล์มีปัญหา ${errors.length} แถว: ${errors.slice(0, 5).map((e) => `แถว ${e.row} ${e.field}: ${e.message}`).join('; ')}`);
+  const { fatal, skipped } = validateImportRows(rows);
+  if (fatal.length) {
+    return fail(res, 422, 'bad_file', `ไฟล์มีปัญหา: ${fatal[0].message}`);
   }
-  const data = await repo.importRows({ filename, mode, rows, importedBy: req.user?.username ?? 'admin' });
-  return ok(res, data);
+  const validRows = rows.filter((r) => !r._skip);
+  if (validRows.length === 0) {
+    return fail(res, 422, 'bad_file', 'ไม่มีแแถวที่นำเข้าได้ (ทุกแแถวมีปัญหา)');
+  }
+  const data = await repo.importRows({ filename, mode, rows: validRows, importedBy: req.user?.username ?? 'admin' });
+  return ok(res, { ...data, skipped });
 }
 
 export async function importsHandler(req, res, repo) {

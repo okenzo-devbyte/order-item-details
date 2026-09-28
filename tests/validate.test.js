@@ -26,12 +26,28 @@ test('parseSearchQuery defaults and bounds', () => {
   assert.equal(big.errors[0].field, 'q');
 });
 
-test('validateImportRows rejects missing headers and dup keys', () => {
+test('validateImportRows rejects missing headers', () => {
   const bad = validateImportRows([{ 'Item Id': '1' }]);
-  assert.ok(bad.errors.some((e) => e.field === '_headers'));
+  assert.ok(bad.fatal.some((e) => e.field === '_headers'));
+});
+
+test('validateImportRows flags duplicate keys as skipped', () => {
   const mk = () => ({ 'Order Number': 'A', 'Item Id': '1', 'Store Code': '106', 'Original Expected Date': '28-Sep-2026 - 28-Sep-2026', 'Dept': '8', 'Class': '312', 'Subclass': '29', 'Customer Name': 'X', 'Product Name': 'P', 'Item Remark': '', 'VIP Customer Remarks': '', 'VIP Customer Groups': '' });
-  const dup = validateImportRows([mk(), mk()]);
-  assert.ok(dup.errors.some((e) => e.field === 'Order Number'));
+  const res = validateImportRows([mk(), mk()]);
+  assert.equal(res.fatal.length, 0);
+  assert.equal(res.skipped.length, 1);
+  assert.equal(res.skipped[0].field, 'Order Number');
+});
+
+test('validateImportRows flags blank Item Id as skipped', () => {
+  const rows = [
+    { 'Order Number': 'A', 'Item Id': '', 'Store Code': '106', 'Original Expected Date': '28-Sep-2026 - 28-Sep-2026', 'Dept': '8', 'Class': '312', 'Subclass': '29', 'Customer Name': 'X', 'Product Name': 'P', 'Item Remark': '', 'VIP Customer Remarks': '', 'VIP Customer Groups': '' }
+  ];
+  const res = validateImportRows(rows);
+  assert.equal(res.fatal.length, 0);
+  assert.equal(res.skipped.length, 1);
+  assert.equal(res.skipped[0].field, 'Item Id');
+  assert.equal(rows[0]._skip, true);
 });
 
 test('validateImportRows passes clean rows and adds _from/_to', () => {
@@ -39,7 +55,8 @@ test('validateImportRows passes clean rows and adds _from/_to', () => {
     { 'Order Number': 'A', 'Item Id': '1', 'Store Code': '106', 'Original Expected Date': '28-Sep-2026 - 28-Sep-2026', 'Dept': '8', 'Class': '312', 'Subclass': '29', 'Customer Name': 'X', 'Product Name': 'P', 'Item Remark': '', 'VIP Customer Remarks': '', 'VIP Customer Groups': '' }
   ];
   const res = validateImportRows(rows);
-  assert.equal(res.errors.length, 0);
+  assert.equal(res.fatal.length, 0);
+  assert.equal(res.skipped.length, 0);
   assert.equal(rows[0]._from, '2026-09-28');
   assert.equal(rows[0]._to, '2026-09-28');
 });

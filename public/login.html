@@ -3,25 +3,52 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>เข้าสู่ระบบ — ค้นกลุ่มสินค้า</title>
+  <title>เข้าสู่ระบบ — Customer Intelligence</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
-<body class="auth-body">
+<body class="auth-page">
   <main class="auth-card">
-    <div class="brand">
-      <div class="logo">🛍️</div>
-      <h1>ค้นกลุ่มสินค้า</h1>
-      <p>ระบบค้นข้อมูลลูกค้าและสินค้า</p>
+    <div class="auth-header">
+      <div class="brand-icon">🏢</div>
+      <h1>Customer Intelligence</h1>
+      <p>ระบบค้นหาข้อมูลลูกค้าและกลุ่มสินค้า</p>
     </div>
+
     <form id="login-form" novalidate>
-      <label for="username">ชื่อผู้ใช้</label>
-      <input id="username" name="username" autocomplete="username" required autofocus>
-      <label for="password">รหัสผ่าน</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required>
-      <button type="submit" class="btn btn-primary btn-block" id="submit-btn">เข้าสู่ระบบ</button>
+      <div class="form-field">
+        <label for="username">ชื่อผู้ใช้งาน (Username)</label>
+        <input 
+          id="username" 
+          name="username" 
+          class="form-input" 
+          placeholder="กรอกชื่อผู้ใช้..." 
+          autocomplete="username" 
+          required 
+          autofocus
+        >
+      </div>
+
+      <div class="form-field">
+        <label for="password">รหัสผ่าน (Password)</label>
+        <input 
+          id="password" 
+          name="password" 
+          type="password" 
+          class="form-input" 
+          placeholder="••••••••" 
+          autocomplete="current-password" 
+          required
+        >
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block" id="submit-btn">
+        <span>เข้าสู่ระบบ</span> →
+      </button>
+
       <p class="form-error" id="form-error" hidden></p>
     </form>
   </main>
+
   <script type="module" src="/js/login.js"></script>
 </body>
 </html>

@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "node --test tests/",
-    "dev": "vercel dev"
+    "dev": "node scripts/dev-server.js",
+    "dev:vercel": "vercel dev"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"

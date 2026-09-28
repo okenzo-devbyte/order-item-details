@@ -15,8 +15,10 @@
    - `SUPABASE_URL` — Project Settings → Data API
    - `SUPABASE_SERVICE_ROLE_KEY` — Project Settings → API Keys (service_role, **ห้ามเปิดเผย**)
    - `SESSION_SECRET` — สตริงสุ่มยาว ๆ อะไรก็ได้
-4. สร้าง user แรก: `USER_PASSWORD=<รหัสผ่าน> node scripts/create-user.js admin <ชื่อผู้ใช้>`
+4. สร้าง user: ดับเบิลคลิก `scripts\users.bat` แล้วเลือกเมนูภาษาไทย
+   (สร้าง admin/viewer, ดูรายชื่อ, เปลี่ยนรหัสผ่าน, เปลี่ยนบทบาท, เปิด/ปิดบัญชี, ลบผู้ใช้)
 5. รันเครื่อง: `npm run dev` แล้วเปิด `http://localhost:3000`
+   (local server ด้วย Node ล้วน ไม่ต้องติดตั้ง/ล็อกอิน Vercel CLI)
 6. Deploy: `vercel` (ตั้ง env ทั้ง 3 ตัวใน Vercel project ด้วย)
 
 ## Smoke checklist

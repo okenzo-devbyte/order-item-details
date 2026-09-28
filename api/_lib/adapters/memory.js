@@ -1,4 +1,5 @@
 import { normalizeThai } from '../normalize.js';
+import { aggregateCustomers, aggregateProducts } from '../aggregate.js';
 
 export function createMemoryAdapter() {
   const state = { orderItems: [], users: [], sessions: [], imports: [] };
@@ -50,6 +51,28 @@ export function createMemoryAdapter() {
 
     async countOrderRows(params) {
       return (await adapter.queryOrderRows(params)).length;
+    },
+
+    async aggregateCustomers({ q, dept, cls, subclass, limit }) {
+      const rows = await adapter.queryOrderRows({ q, direction: 'customer', dept, cls, subclass, limit });
+      return aggregateCustomers(rows);
+    },
+
+    async aggregateProducts({ q, dept, cls, subclass, limit }) {
+      const rows = await adapter.queryOrderRows({ q, direction: 'product', dept, cls, subclass, limit });
+      return aggregateProducts(rows);
+    },
+
+    async customerSummary(name) {
+      const rows = await adapter.queryOrderRows({ customerNorm: normalizeThai(name), limit: 10000 });
+      if (!rows.length) return null;
+      return aggregateCustomers(rows)[0];
+    },
+
+    async productSummary(itemId) {
+      const rows = await adapter.queryOrderRows({ itemId, limit: 10000 });
+      if (!rows.length) return null;
+      return aggregateProducts(rows)[0];
     },
 
     async listFilters({ dept, cls }) {

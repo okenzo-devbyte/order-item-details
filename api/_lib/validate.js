@@ -49,40 +49,54 @@ const REQUIRED_HEADERS = [
 ];
 
 export function validateImportRows(rows) {
-  const errors = [];
-  const warnings = [];
+  const fatal = [];
+  const skipped = [];
   if (!Array.isArray(rows) || rows.length === 0) {
-    return { errors: [{ row: 0, field: '_file', message: 'ไฟล์ว่างหรืออ่านไม่ได้' }], warnings };
+    return { fatal: [{ row: 0, field: '_file', message: 'ไฟล์ว่างหรืออ่านไม่ได้' }], skipped };
   }
   const headers = Object.keys(rows[0]);
   const missing = REQUIRED_HEADERS.filter((h) => !headers.includes(h));
   if (missing.length) {
-    return { errors: [{ row: 0, field: '_headers', message: `หัวคอลัมน์ไม่ครบ: ${missing.join(', ')}` }], warnings };
+    return { fatal: [{ row: 0, field: '_headers', message: `หัวคอลัมน์ไม่ครบ: ${missing.join(', ')}` }], skipped };
   }
   const seen = new Map();
   rows.forEach((r, i) => {
     const rowNo = i + 2;
     const orderNumber = String(r['Order Number'] ?? '').trim();
     const itemId = String(r['Item Id'] ?? '').trim();
-    if (!orderNumber) errors.push({ row: rowNo, field: 'Order Number', message: 'ว่าง' });
-    if (!itemId) errors.push({ row: rowNo, field: 'Item Id', message: 'ว่าง' });
+    if (!orderNumber) {
+      r._skip = true;
+      skipped.push({ row: rowNo, field: 'Order Number', message: 'ว่าง' });
+      return;
+    }
+    if (!itemId) {
+      r._skip = true;
+      skipped.push({ row: rowNo, field: 'Item Id', message: 'ว่าง' });
+      return;
+    }
     const key = `${orderNumber}|${itemId}`;
-    if (orderNumber && itemId) {
-      if (seen.has(key)) errors.push({ row: rowNo, field: 'Order Number', message: `ซ้ำกับแถว ${seen.get(key)}` });
-      else seen.set(key, rowNo);
+    if (seen.has(key)) {
+      r._skip = true;
+      skipped.push({ row: rowNo, field: 'Order Number', message: `ซ้ำกับแแถว ${seen.get(key)}` });
+      return;
     }
+    seen.set(key, rowNo);
     const range = parseExpectedRange(r['Original Expected Date']);
-    if (!range) errors.push({ row: rowNo, field: 'Original Expected Date', message: 'รูปแบบวันที่ไม่ถูก (ต้องการ dd-Mon-yyyy - dd-Mon-yyyy)' });
-    else {
-      r._from = range.from;
-      r._to = range.to;
+    if (!range) {
+      r._skip = true;
+      skipped.push({ row: rowNo, field: 'Original Expected Date', message: 'รูปแบบวันที่ไม่ถูก (ต้องการ dd-Mon-yyyy - dd-Mon-yyyy)' });
+      return;
     }
+    r._from = range.from;
+    r._to = range.to;
     for (const f of ['Dept', 'Class', 'Subclass']) {
       const v = r[f];
       if (v !== undefined && v !== '' && v !== null && !Number.isInteger(Number(v))) {
-        errors.push({ row: rowNo, field: f, message: 'ต้องเป็นตัวเลข' });
+        r._skip = true;
+        skipped.push({ row: rowNo, field: f, message: 'ต้องเป็นตัวเลข' });
+        return;
       }
     }
   });
-  return { errors, warnings };
+  return { fatal, skipped };
 }

@@ -48,6 +48,21 @@ function readWorkbook(file) {
   });
 }
 
+const dropzone = document.getElementById('dropzone');
+if (dropzone) {
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.style.borderColor = 'var(--primary-600)'; });
+  dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = ''; });
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.style.borderColor = '';
+    if (e.dataTransfer.files && e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      fileInput.dispatchEvent(new Event('change'));
+    }
+  });
+}
+
 fileInput.addEventListener('change', async () => {
   const file = fileInput.files[0];
   if (!file) return;
@@ -69,14 +84,18 @@ fileInput.addEventListener('change', async () => {
 
 importBtn.addEventListener('click', async () => {
   if (!pendingRows) return;
-  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const mode = 'replace';
   importBtn.disabled = true;
   importBtn.textContent = 'กำลังนำเข้า…';
   try {
     const data = await api('/api/admin/import?mode=' + mode + '&filename=' + encodeURIComponent(pendingName), {
       method: 'POST', body: { rows: pendingRows }
     });
-    toast(`นำเข้าสำเร็จ: ${data.row_count} แถว`, 'success');
+    toast(`นำเข้าสำเร็จ: ${data.row_count} แแถว`, 'success');
+    if (data.skipped && data.skipped.length) {
+      const first = data.skipped.slice(0, 3).map((s) => `แแถว ${s.row} ${s.field}`).join('; ');
+      toast(`ข้าม ${data.skipped.length} แแถว: ${first}${data.skipped.length > 3 ? ' …' : ''}`);
+    }
     await loadImports();
     preview.hidden = true;
     fileInput.value = '';
@@ -87,7 +106,7 @@ importBtn.addEventListener('click', async () => {
     toast(err.message);
   } finally {
     importBtn.disabled = false;
-    importBtn.textContent = 'นำเข้าข้อมูล';
+    importBtn.innerHTML = '<span>🚀 เริ่มนำเข้าข้อมูล</span>';
   }
 });
 
